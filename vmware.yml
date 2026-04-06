@@ -2,6 +2,7 @@ apiVersion: v1
 kind: Pod
 metadata:
   name: vmware-gateway
+  namespace: npc
   labels:
     app: vmware
 spec:
@@ -16,6 +17,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: vmware-gateway-service
+  namespace: npc
 spec:
   type: ClusterIP
   selector:
