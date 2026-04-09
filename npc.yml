@@ -158,7 +158,7 @@ metadata:
   name: ollama-pvc
   namespace: npc
 spec:
-  storageClassName: openebs-single-replica
+  storageClassName: openebs-hostpath
   accessModes:
     - ReadWriteOnce
   resources:
