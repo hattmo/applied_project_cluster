@@ -149,7 +149,21 @@ spec:
           readOnly: true
       volumes:
       - name: ollama-storage
-        emptyDir: {}
+        persistentVolumeClaim:
+          claimName: ollama-pvc
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ollama-pvc
+  namespace: npc
+spec:
+  storageClassName: openebs-single-replica
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi
 ---
 apiVersion: v1
 kind: Service
