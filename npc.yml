@@ -55,19 +55,19 @@ spec:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: ollama
+  name: agent
   namespace: npc
   labels:
-    app: ollama
+    app: agent
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: ollama
+      app: agent
   template:
     metadata:
       labels:
-        app: ollama
+        app: agent
     spec:
       containers:
       - name: ollama
@@ -104,19 +104,65 @@ spec:
           limits:
             memory: "8Gi"
             cpu: "4000m"
+        volumeMounts:
+        - name: ollama-storage
+          mountPath: /root/.ollama
+      - name: openclaw
+        image: hattmo/openclaw:latest
+        env:
+        - name: OLLAMA_HOST
+          value: "http://localhost:11434"
+        - name: OLLAMA_MODEL
+          valueFrom:
+            configMapKeyRef:
+              name: ollama-config
+              key: model
+        - name: OPENCLAW_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: ollama-creds
+              key: api-key
+        ports:
+        - containerPort: 8080
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 15
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "2Gi"
+            cpu: "1000m"
+        volumeMounts:
+        - name: ollama-storage
+          mountPath: /root/.ollama
+          readOnly: true
+      volumes:
+      - name: ollama-storage
+        emptyDir: {}
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: ollama-service
+  name: agent-service
   namespace: npc
 spec:
   type: ClusterIP
   selector:
-    app: ollama
+    app: agent
   ports:
-  - port: 11434
-    targetPort: 11434
+  - port: 8080
+    targetPort: 8080
 ---
 apiVersion: v1
 kind: ConfigMap
