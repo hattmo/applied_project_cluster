@@ -133,6 +133,7 @@ spec:
         - lan
         - --port
         - "18789"
+        - --allow-unconfigured
         livenessProbe:
           httpGet:
             path: /healthz
