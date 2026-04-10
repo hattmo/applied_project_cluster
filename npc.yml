@@ -123,6 +123,8 @@ spec:
               key: model
         - name: TZ
           value: UTC
+        - name: OPENCLAW_GATEWAY_CONTROL_UI_DANGEROUSLY_ALLOW_HOST_HEADER_ORIGIN_FALLBACK
+          value: "true"
         ports:
         - containerPort: 18789
         command:
