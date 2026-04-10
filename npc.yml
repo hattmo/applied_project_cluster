@@ -71,20 +71,6 @@ spec:
     spec:
       securityContext:
         fsGroup: 1000
-      initContainers:
-      - name: init-config
-        image: busybox:latest
-        command:
-        - sh
-        - -c
-        - |
-          mkdir -p /home/node/.openclaw
-          cat > /home/node/.openclaw/config.json << 'EOF'
-          {"agents":{"defaults":{"provider":"ollama","model":"qwen3.5"}}}
-          EOF
-        volumeMounts:
-        - name: openclaw-config
-          mountPath: /home/node/.openclaw
       containers:
       - name: ollama
         image: ollama/ollama:latest
@@ -154,15 +140,6 @@ spec:
               key: password
         ports:
         - containerPort: 18789
-        command:
-        - node
-        - dist/index.js
-        - gateway
-        - --bind
-        - lan
-        - --port
-        - "18789"
-        - --allow-unconfigured
         livenessProbe:
           httpGet:
             path: /healthz
