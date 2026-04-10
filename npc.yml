@@ -71,6 +71,35 @@ spec:
     spec:
       securityContext:
         fsGroup: 1000
+      initContainers:
+      - name: init-config
+        image: busybox:latest
+        command:
+        - sh
+        - -c
+        - |
+          mkdir -p /config
+          cat > /config/config.json << 'EOF'
+          {
+            "gateway": {
+              "mode": "local",
+              "bind": "loopback",
+              "controlUi": {
+                "allowedOrigins": ["http://localhost:18789", "http://127.0.0.1:18789"]
+              }
+            },
+            "agents": {
+              "defaults": {
+                "provider": "ollama",
+                "model": "qwen3.5"
+              }
+            }
+          }
+          EOF
+          cp /config/config.json /home/node/.openclaw/config.json
+        volumeMounts:
+        - name: openclaw-config
+          mountPath: /home/node/.openclaw
       containers:
       - name: ollama
         image: ollama/ollama:latest
@@ -123,8 +152,6 @@ spec:
               key: model
         - name: TZ
           value: UTC
-        - name: OPENCLAW_GATEWAY_CONTROL_UI_DANGEROUSLY_ALLOW_HOST_HEADER_ORIGIN_FALLBACK
-          value: "true"
         ports:
         - containerPort: 18789
         command:
