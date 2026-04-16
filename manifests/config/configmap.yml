@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ollama-config
+  namespace: npc
+data:
+  model: "qwen3.5"

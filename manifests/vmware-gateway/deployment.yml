@@ -1,0 +1,36 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vmware-gateway
+  namespace: npc
+  labels:
+    app: vmware
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: vmware
+  template:
+    metadata:
+      labels:
+        app: vmware
+    spec:
+      containers:
+      - name: app
+        # flux: get image policy vmware-gateway
+        image: hattmo/vmware-gateway:latest
+        envFrom:
+        - secretRef:
+            name: vmware-creds
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 8888
+          initialDelaySeconds: 10
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 8888
+          initialDelaySeconds: 5
+          periodSeconds: 5

@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: vmware-gateway-service
+  namespace: npc
+spec:
+  type: ClusterIP
+  selector:
+    app: vmware
+  ports:
+  - port: 8888
+    targetPort: 8888
