@@ -22,7 +22,8 @@ spec:
     spec:
       containers:
       - name: app
-        image: hattmo/vmware_gateway
+        # flux: get image policy vmware-gateway
+        image: hattmo/vmware-gateway:latest
         envFrom:
         - secretRef:
             name: vmware-creds
@@ -110,7 +111,8 @@ spec:
         - name: ollama-storage
           mountPath: /root/.ollama
       - name: openclaw
-        image: ghcr.io/openclaw/openclaw:latest
+        # flux: get image policy openclaw
+        image: hattmo/openclaw:latest
         env:
         - name: HOME
           value: /home/node
