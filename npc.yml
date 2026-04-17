@@ -185,9 +185,10 @@ metadata:
   name: agent-service
   namespace: npc
 spec:
-  type: ClusterIP
+  type: LoadBalancer
   selector:
     app: agent
   ports:
   - port: 18789
     targetPort: 18789
+    name: gateway
