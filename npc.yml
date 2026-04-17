@@ -119,7 +119,6 @@ spec:
         - name: OLLAMA_HOST
           value: "http://localhost:11434"
         - name: OLLAMA_MODEL
-          value: "qwen:3.5"
           valueFrom:
             configMapKeyRef:
               name: ollama-config
