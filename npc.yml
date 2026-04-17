@@ -81,11 +81,6 @@ spec:
             secretKeyRef:
               name: ollama-creds
               key: api-key
-        - name: OLLAMA_MODEL
-          valueFrom:
-            configMapKeyRef:
-              name: ollama-config
-              key: model
         ports:
         - containerPort: 11434
         livenessProbe:
@@ -116,27 +111,28 @@ spec:
         env:
         - name: HOME
           value: /home/node
-        - name: OLLAMA_HOST
-          value: "http://localhost:11434"
-        - name: OLLAMA_MODEL
-          value: "qwen:3.5"
         - name: TZ
           value: UTC
-        - name: MATRIX_HOMESERVER_URL
+        - name: MATRIX_URL
           valueFrom:
             secretKeyRef:
               name: matrix-creds
-              key: homeserver-url
-        - name: MATRIX_USER_ID
+              key: url
+        - name: MATRIX_USER
           valueFrom:
             secretKeyRef:
               name: matrix-creds
-              key: user-id
+              key: user
         - name: MATRIX_PASSWORD
           valueFrom:
             secretKeyRef:
               name: matrix-creds
               key: password
+        - name: MATRIX_DEVICE
+          valueFrom:
+            secretKeyRef:
+              name: matrix-creds
+              key: device
         ports:
         - containerPort: 18789
         livenessProbe:
