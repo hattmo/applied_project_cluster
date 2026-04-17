@@ -64,6 +64,7 @@ spec:
   replicas: 1
   strategy:
     type: Recreate
+    rollingUpdate: null
   progressDeadlineSeconds: 600
   selector:
     matchLabels:
