@@ -82,13 +82,13 @@ spec:
         - sh
         - -c
         - |
-          if [ ! -f /root/.ollama/ssh/id_ed25519 ] || [ ! -f /root/.ollama/ssh/id_ed25519.pub ]; then
+          if [ ! -f /root/.ollama/id_ed25519 ] || [ ! -f /root/.ollama/id_ed25519.pub ]; then
             echo "SSH keys not found, copying from secret..."
-            mkdir -p /root/.ollama/ssh
-            cp /ssh-secret/id_ed25519 /root/.ollama/ssh/id_ed25519
-            cp /ssh-secret/id_ed25519.pub /root/.ollama/ssh/id_ed25519.pub
-            chmod 600 /root/.ollama/ssh/id_ed25519
-            chmod 644 /root/.ollama/ssh/id_ed25519.pub
+            mkdir -p /root/.ollama
+            cp /ssh-secret/id_ed25519 /root/.ollama/id_ed25519
+            cp /ssh-secret/id_ed25519.pub /root/.ollama/id_ed25519.pub
+            chmod 600 /root/.ollama/id_ed25519
+            chmod 644 /root/.ollama/id_ed25519.pub
             echo "SSH keys installed"
           else
             echo "SSH keys already exist, skipping"
