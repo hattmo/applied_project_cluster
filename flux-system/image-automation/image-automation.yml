@@ -18,6 +18,8 @@ metadata:
 spec:
   imageRepositoryRef:
     name: vmware-gateway
+  filterTags:
+    pattern: '^latest$'
   policy:
     semver:
       range: '*'
@@ -40,6 +42,8 @@ metadata:
 spec:
   imageRepositoryRef:
     name: openclaw
+  filterTags:
+    pattern: '^latest$'
   policy:
     semver:
       range: '*'
