@@ -119,6 +119,7 @@ spec:
         - name: OLLAMA_HOST
           value: "http://localhost:11434"
         - name: OLLAMA_MODEL
+          value: "qwen:3.5"
           valueFrom:
             configMapKeyRef:
               name: ollama-config
@@ -163,24 +164,10 @@ spec:
           limits:
             memory: "2Gi"
             cpu: "1000m"
-        volumeMounts:
-        - name: ollama-storage
-          mountPath: /root/.ollama
-          readOnly: true
-        - name: openclaw-config
-          mountPath: /home/node/.openclaw
-        - name: openclaw-workspace
-          mountPath: /home/node/.openclaw/workspace
       volumes:
       - name: ollama-storage
         persistentVolumeClaim:
           claimName: ollama-pvc
-      - name: openclaw-config
-        persistentVolumeClaim:
-          claimName: openclaw-config-pvc
-      - name: openclaw-workspace
-        persistentVolumeClaim:
-          claimName: openclaw-workspace-pvc
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -196,32 +183,6 @@ spec:
       storage: 20Gi
 ---
 apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: openclaw-config-pvc
-  namespace: npc
-spec:
-  storageClassName: openebs-hostpath
-  accessModes:
-    - ReadWriteOnce
-  resources:
-    requests:
-      storage: 5Gi
----
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: openclaw-workspace-pvc
-  namespace: npc
-spec:
-  storageClassName: openebs-hostpath
-  accessModes:
-    - ReadWriteOnce
-  resources:
-    requests:
-      storage: 10Gi
----
-apiVersion: v1
 kind: Service
 metadata:
   name: agent-service
@@ -233,12 +194,3 @@ spec:
   ports:
   - port: 18789
     targetPort: 18789
----
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: ollama-config
-  namespace: npc
-data:
-  model: "qwen3.5"
-
