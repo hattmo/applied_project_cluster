@@ -118,11 +118,6 @@ spec:
           value: /home/node
         - name: TZ
           value: UTC
-        - name: OLLAMA_API_KEY
-          valueFrom:
-            secretKeyRef:
-              name: ollama-creds
-              key: api-key
         - name: MATRIX_URL
           valueFrom:
             secretKeyRef:
