@@ -19,8 +19,8 @@ spec:
   imageRepositoryRef:
     name: vmware-gateway
   policy:
-    semver:
-      range: '*'
+    alphabetical:
+      order: asc
 ---
 apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
@@ -41,8 +41,8 @@ spec:
   imageRepositoryRef:
     name: openclaw
   policy:
-    semver:
-      range: '*'
+    alphabetical:
+      order: asc
 ---
 apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
