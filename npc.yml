@@ -62,6 +62,9 @@ metadata:
     app: agent
 spec:
   replicas: 1
+  strategy:
+    type: Recreate
+  progressDeadlineSeconds: 600
   selector:
     matchLabels:
       app: agent
