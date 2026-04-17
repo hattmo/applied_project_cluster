@@ -21,7 +21,8 @@ spec:
   filterTags:
     pattern: '^latest$'
   policy:
-    order: asc
+    alphabetical:
+      order: asc
 ---
 apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
@@ -44,7 +45,8 @@ spec:
   filterTags:
     pattern: '^latest$'
   policy:
-    order: asc
+    alphabetical:
+      order: asc
 ---
 apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
