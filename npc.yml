@@ -81,6 +81,8 @@ spec:
             secretKeyRef:
               name: ollama-creds
               key: api-key
+        - name: OLLAMA_MODEL
+          value: "qwen:3.5"
         ports:
         - containerPort: 11434
         livenessProbe:
