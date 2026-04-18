@@ -16,7 +16,7 @@ RUN npm run build
 # =============================================================================
 # Stage 2: Build Backend (Rust)
 # =============================================================================
-FROM rust:1.75-alpine AS backend-builder
+FROM rust:1.85-alpine AS backend-builder
 
 # Install dependencies
 RUN apk add --no-cache musl-dev
