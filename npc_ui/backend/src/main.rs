@@ -162,18 +162,21 @@ async fn main() -> anyhow::Result<()> {
                         
                         // Spawn sync task if room_id is provided
                         if let Some(room_id_str) = &matrix_room_id {
-                            if let Ok(room_id) = room_id!(room_id_str).to_owned() {
-                                let sync_client = client.clone();
-                                let room_id_clone = room_id_str.clone();
-                                let matrix_state = MatrixState {
-                                    room_members: room_members.clone(),
-                                };
-                                tokio::spawn(async move {
-                                    sync_matrix_room(sync_client, room_id, room_id_clone, matrix_state).await;
-                                });
-                                tracing::info!("Matrix sync started for room: {}", room_id_str);
-                            } else {
-                                tracing::error!("Invalid room ID: {}", room_id_str);
+                            match matrix_sdk::ruma::OwnedRoomId::try_from(room_id_str.as_str()) {
+                                Ok(room_id) => {
+                                    let sync_client = client.clone();
+                                    let room_id_clone = room_id_str.clone();
+                                    let matrix_state = MatrixState {
+                                        room_members: room_members.clone(),
+                                    };
+                                    tokio::spawn(async move {
+                                        sync_matrix_room(sync_client, room_id, room_id_clone, matrix_state).await;
+                                    });
+                                    tracing::info!("Matrix sync started for room: {}", room_id_str);
+                                }
+                                Err(e) => {
+                                    tracing::error!("Invalid room ID '{}': {}", room_id_str, e);
+                                }
                             }
                         }
                         
