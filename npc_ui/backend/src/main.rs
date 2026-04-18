@@ -12,6 +12,7 @@ use matrix_sdk::{
         events::room::message::{RoomMessageEventContent, OriginalSyncRoomMessageEvent},
         room_id,
     },
+    room::RoomMemberships,
     Client,
 };
 use serde::{Deserialize, Serialize};
@@ -156,7 +157,7 @@ async fn main() -> anyhow::Result<()> {
         {
             Ok(client) => {
                 // Login
-                match client.login_username(user, password).send().await {
+                match client.matrix_auth().login_username(&user, &password).send().await {
                     Ok(response) => {
                         tracing::info!("Matrix login successful: {}", response.user_id);
                         
@@ -263,7 +264,7 @@ async fn sync_matrix_room(
     };
 
     // Initial member sync
-    if let Ok(members) = room.members().await {
+    if let Ok(members) = room.members(RoomMemberships::ACTIVE).await {
         let mut members_list: Vec<MatrixUser> = members
             .iter()
             .filter(|m| {
@@ -328,7 +329,7 @@ async fn sync_matrix_room(
     // Continuous sync loop
     loop {
         // Re-fetch members on each sync to catch joins/leaves
-        if let Ok(members) = room.members().await {
+        if let Ok(members) = room.members(RoomMemberships::ACTIVE).await {
             let mut members_list: Vec<MatrixUser> = members
                 .iter()
                 .filter(|m| {
