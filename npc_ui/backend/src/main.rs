@@ -262,8 +262,8 @@ async fn sync_matrix_room(
         }
     };
 
-    // Initial member sync - get all room members
-    let members = room.get_members().await.unwrap_or(vec![]);
+    // Initial member sync - get all room members from synced state
+    let members: Vec<_> = room.members_synced().await.unwrap_or_default();
         let mut members_list: Vec<MatrixUser> = members
             .into_iter()
             .filter(|m| {
@@ -327,7 +327,7 @@ async fn sync_matrix_room(
     // Continuous sync loop
     loop {
         // Re-fetch members on each sync to catch joins/leaves
-        if let Ok(members) = room.members(matrix_sdk::room::RoomMemberships::all()) {
+        let members: Vec<_> = room.members_synced().await.unwrap_or_default();
             let mut members_list: Vec<MatrixUser> = members
                 .into_iter()
                 .filter(|m| {
