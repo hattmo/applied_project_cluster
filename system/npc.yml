@@ -168,16 +168,16 @@ spec:
           httpGet:
             path: /healthz
             port: 18789
-          initialDelaySeconds: 60
-          periodSeconds: 30
-          timeoutSeconds: 10
+          initialDelaySeconds: 120
+          periodSeconds: 60
+          timeoutSeconds: 20
         readinessProbe:
           httpGet:
             path: /readyz
             port: 18789
-          initialDelaySeconds: 30
-          periodSeconds: 10
-          timeoutSeconds: 10
+          initialDelaySeconds: 120
+          periodSeconds: 60
+          timeoutSeconds: 20
         resources:
           requests:
             memory: "512Mi"
