@@ -262,8 +262,10 @@ async fn sync_matrix_room(
         }
     };
 
-    // Initial member sync - get all room members from synced state
-    let members: Vec<_> = room.members_synced().await.unwrap_or_default();
+    // Initial member sync - placeholder
+    // Room member tracking requires fixing RoomMemberships API access
+    tracing::info!("Joined room: {}", room_id);
+    let members_list: Vec<MatrixUser> = vec![];
         let mut members_list: Vec<MatrixUser> = members
             .into_iter()
             .filter(|m| {
@@ -326,8 +328,8 @@ async fn sync_matrix_room(
 
     // Continuous sync loop
     loop {
-        // Re-fetch members on each sync to catch joins/leaves
-        let members: Vec<_> = room.members_synced().await.unwrap_or_default();
+        // TODO: Re-fetch members on each sync to catch joins/leaves
+        // Currently blocked by RoomMemberships being private in matrix-sdk 0.9
             let mut members_list: Vec<MatrixUser> = members
                 .into_iter()
                 .filter(|m| {
