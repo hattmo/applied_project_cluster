@@ -14,7 +14,6 @@ use matrix_sdk::{
     },
     Client,
 };
-use matrix_sdk_base::rooms::RoomMemberships;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -263,8 +262,8 @@ async fn sync_matrix_room(
         }
     };
 
-    // Initial member sync
-    if let Ok(members) = room.members(RoomMemberships::JOIN).await {
+    // Initial member sync - get all members (joined, invited, etc)
+    if let Ok(members) = room.members(None).await {
         let mut members_list: Vec<MatrixUser> = members
             .iter()
             .filter(|m| {
@@ -328,7 +327,7 @@ async fn sync_matrix_room(
     // Continuous sync loop
     loop {
         // Re-fetch members on each sync to catch joins/leaves
-        if let Ok(members) = room.members(RoomMemberships::JOIN).await {
+        if let Ok(members) = room.members(None).await {
             let mut members_list: Vec<MatrixUser> = members
                 .iter()
                 .filter(|m| {
