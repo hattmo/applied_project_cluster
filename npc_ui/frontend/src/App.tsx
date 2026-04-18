@@ -2,6 +2,13 @@ import { useState, useEffect } from 'react'
 import './App.css'
 
 // Types
+interface MatrixUser {
+  user_id: string
+  display_name: string | null
+  avatar_url: string | null
+  is_bot: boolean
+}
+
 interface VmConfig {
   id: string
   name: string
@@ -36,6 +43,12 @@ const API_BASE = '/api/v1'
 function App() {
   const [activeTab, setActiveTab] = useState<'vms' | 'queues'>('vms')
   
+  // Matrix agents state
+  const [agents, setAgents] = useState<MatrixUser[]>([])
+  const [agentsLoading, setAgentsLoading] = useState(true)
+  const [agentsError, setAgentsError] = useState<string | null>(null)
+  const [matrixStatus, setMatrixStatus] = useState<{connected: boolean, room_id: string | null, members: number} | null>(null)
+  
   // VM Configs state
   const [vmConfigs, setVmConfigs] = useState<VmConfig[]>([])
   const [vmLoading, setVmLoading] = useState(true)
@@ -58,6 +71,12 @@ function App() {
   const [newTaskKeystrokes, setNewTaskKeystrokes] = useState('')
   const [newTaskDelay, setNewTaskDelay] = useState('')
 
+  // Load Matrix status and agents
+  useEffect(() => {
+    fetchMatrixStatus()
+    fetchAgents()
+  }, [])
+
   // Load VM Configs
   useEffect(() => {
     fetchVmConfigs()
@@ -69,6 +88,34 @@ function App() {
       fetchTaskQueues()
     }
   }, [activeTab])
+
+  async function fetchMatrixStatus() {
+    try {
+      const res = await fetch(`${API_BASE}/status`)
+      if (!res.ok) throw new Error('Failed to fetch status')
+      const data = await res.json()
+      setMatrixStatus({
+        connected: data.matrix_connected,
+        room_id: data.matrix_room_id,
+        members: data.room_members_count,
+      })
+    } catch (err) {
+      console.error('Failed to fetch Matrix status:', err)
+    }
+  }
+
+  async function fetchAgents() {
+    try {
+      const res = await fetch(`${API_BASE}/agents`)
+      if (!res.ok) throw new Error('Failed to fetch agents')
+      const data = await res.json()
+      setAgents(data)
+      setAgentsLoading(false)
+    } catch (err) {
+      setAgentsError(err instanceof Error ? err.message : 'Unknown error')
+      setAgentsLoading(false)
+    }
+  }
 
   async function fetchVmConfigs() {
     try {
@@ -224,9 +271,32 @@ function App() {
     return vm ? vm.name : vmId
   }
 
+  function getAgentDisplayName(agentId: string) {
+    const agent = agents.find(a => a.user_id === agentId)
+    if (!agent) return agentId
+    return agent.display_name || agent.user_id
+  }
+
   return (
     <div className="container">
       <h1>🖥️ NPC VM Operator</h1>
+      
+      {/* Matrix Status Bar */}
+      {matrixStatus && (
+        <div className={`status-bar ${matrixStatus.connected ? 'connected' : 'disconnected'}`}>
+          <span className="status-indicator">
+            {matrixStatus.connected ? '🟢' : '🔴'} Matrix
+          </span>
+          {matrixStatus.connected && matrixStatus.room_id && (
+            <span className="status-detail">
+              Room: {matrixStatus.room_id} • {matrixStatus.members} agents
+            </span>
+          )}
+          {!matrixStatus.connected && (
+            <span className="status-detail">Not connected to Matrix</span>
+          )}
+        </div>
+      )}
       
       <div className="tabs">
         <button 
@@ -262,13 +332,27 @@ function App() {
                 onChange={(e) => setNewVmName(e.target.value)}
                 className="input"
               />
-              <input
-                type="text"
-                placeholder="Agent ID"
+              <select
                 value={newVmAgentId}
                 onChange={(e) => setNewVmAgentId(e.target.value)}
                 className="input"
-              />
+              >
+                <option value="">Select Agent</option>
+                {agentsLoading ? (
+                  <option disabled>Loading agents...</option>
+                ) : agentsError ? (
+                  <option disabled>Error loading agents</option>
+                ) : agents.length === 0 ? (
+                  <option disabled>No agents available</option>
+                ) : (
+                  agents.map((agent) => (
+                    <option key={agent.user_id} value={agent.user_id}>
+                      {agent.display_name || agent.user_id}
+                      {agent.is_bot ? ' 🤖' : ''}
+                    </option>
+                  ))
+                )}
+              </select>
               <button className="btn btn-primary" onClick={createVmConfig}>Create</button>
             </div>
           )}
@@ -291,18 +375,24 @@ function App() {
                         onBlur={(e) => updateVmConfig(vm.id, { name: e.target.value })}
                         className="input"
                       />
-                      <input
-                        type="text"
+                      <select
                         defaultValue={vm.agent_id}
                         onBlur={(e) => updateVmConfig(vm.id, { agent_id: e.target.value })}
                         className="input"
-                      />
+                      >
+                        {agents.map((agent) => (
+                          <option key={agent.user_id} value={agent.user_id}>
+                            {agent.display_name || agent.user_id}
+                            {agent.is_bot ? ' 🤖' : ''}
+                          </option>
+                        ))}
+                      </select>
                     </div>
                   ) : (
                     <div className="item-content">
                       <div>
                         <strong>{vm.name}</strong>
-                        <span className="badge">Agent: {vm.agent_id}</span>
+                        <span className="badge">Agent: {getAgentDisplayName(vm.agent_id)}</span>
                       </div>
                       <span className={`status ${vm.enabled ? 'active' : 'inactive'}`}>
                         {vm.enabled ? '● Active' : '○ Inactive'}

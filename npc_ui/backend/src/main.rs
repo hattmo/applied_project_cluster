@@ -1,15 +1,23 @@
 use axum::{
     extract::{Path, State},
     http::StatusCode,
-    response::{Html, Json, IntoResponse},
+    response::Json,
     routing::{delete, get, post, put},
     Router,
 };
-use tower_http::services::ServeDir;
+use matrix_sdk::{
+    config::SyncSettings,
+    room::Room,
+    ruma::{
+        events::room::message::OriginalSyncRoomMessageEvent,
+        OwnedRoomId,
+    },
+    Client,
+};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use tower_http::{cors::CorsLayer, trace::TraceLayer};
+use tower_http::{cors::CorsLayer, services::ServeDir, trace::TraceLayer};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 #[derive(Clone)]
@@ -17,6 +25,17 @@ struct AppState {
     version: String,
     vm_configs: Arc<RwLock<Vec<VmConfig>>>,
     task_queues: Arc<RwLock<Vec<TaskQueue>>>,
+    matrix_client: Option<Client>,
+    matrix_room_id: Option<String>,
+    room_members: Arc<RwLock<Vec<MatrixUser>>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct MatrixUser {
+    user_id: String,
+    display_name: Option<String>,
+    avatar_url: Option<String>,
+    is_bot: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -54,6 +73,9 @@ struct Task {
 struct HealthResponse {
     status: String,
     version: String,
+    matrix_connected: bool,
+    matrix_room_id: Option<String>,
+    room_members_count: usize,
 }
 
 #[derive(Deserialize)]
@@ -92,27 +114,105 @@ struct UpdateTaskQueue {
     enabled: Option<bool>,
 }
 
+#[derive(Clone)]
+struct MatrixState {
+    room_members: Arc<RwLock<Vec<MatrixUser>>>,
+}
+
 #[tokio::main]
-async fn main() {
+async fn main() -> anyhow::Result<()> {
     // Initialize tracing
     tracing_subscriber::registry()
         .with(
             tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "npc_ui_backend=debug,tower_http=debug".into()),
+                .unwrap_or_else(|_| "npc_ui_backend=debug,tower_http=debug,matrix_sdk=debug".into()),
         )
         .with(tracing_subscriber::fmt::layer())
         .init();
+
+    // Load Matrix credentials from environment
+    let matrix_homeserver = std::env::var("MATRIX_HOMESERVER").ok();
+    let matrix_user = std::env::var("MATRIX_USER").ok();
+    let matrix_password = std::env::var("MATRIX_PASSWORD").ok();
+    let matrix_room_id = std::env::var("MATRIX_ROOM_ID").ok();
+
+    let (matrix_client, matrix_room_id_opt, room_members) = if let (Some(homeserver), Some(user), Some(password)) = 
+        (&matrix_homeserver, &matrix_user, &matrix_password) 
+    {
+        tracing::info!("Connecting to Matrix homeserver: {}", homeserver);
+        
+        let homeserver_url = if homeserver.starts_with("http") {
+            homeserver.clone()
+        } else {
+            format!("https://{}", homeserver)
+        };
+
+        let room_members: Arc<RwLock<Vec<MatrixUser>>> = Arc::new(RwLock::new(Vec::new()));
+
+        match Client::builder()
+            .homeserver_url(homeserver_url)
+            .build()
+            .await
+        {
+            Ok(client) => {
+                // Login
+                match client.matrix_auth().login_username(&user, &password).send().await {
+                    Ok(response) => {
+                        tracing::info!("Matrix login successful: {}", response.user_id);
+                        
+                        // Spawn sync task if room_id is provided
+                        if let Some(room_id_str) = &matrix_room_id {
+                            match OwnedRoomId::try_from(room_id_str.as_str()) {
+                                Ok(room_id) => {
+                                    let sync_client = client.clone();
+                                    let room_id_clone = room_id_str.clone();
+                                    let matrix_state = MatrixState {
+                                        room_members: room_members.clone(),
+                                    };
+                                    tokio::spawn(async move {
+                                        sync_matrix_room(sync_client, room_id, room_id_clone, matrix_state).await;
+                                    });
+                                    tracing::info!("Matrix sync started for room: {}", room_id_str);
+                                }
+                                Err(e) => {
+                                    tracing::error!("Invalid room ID '{}': {}", room_id_str, e);
+                                }
+                            }
+                        }
+                        
+                        (Some(client), matrix_room_id, room_members)
+                    }
+                    Err(e) => {
+                        tracing::error!("Matrix login failed: {}", e);
+                        (None, None, Arc::new(RwLock::new(Vec::new())))
+                    }
+                }
+            }
+            Err(e) => {
+                tracing::error!("Matrix client build failed: {}", e);
+                (None, None, Arc::new(RwLock::new(Vec::new())))
+            }
+        }
+    } else {
+        tracing::warn!("Matrix credentials not provided, running without Matrix integration");
+        (None, None, Arc::new(RwLock::new(Vec::new())))
+    };
 
     let state = Arc::new(AppState {
         version: env!("CARGO_PKG_VERSION").to_string(),
         vm_configs: Arc::new(RwLock::new(Vec::new())),
         task_queues: Arc::new(RwLock::new(Vec::new())),
+        matrix_client,
+        matrix_room_id: matrix_room_id_opt,
+        room_members,
     });
 
     let app = Router::new()
         // API routes
         .route("/health", get(health_handler))
         .route("/api/v1/status", get(status_handler))
+        // Agent routes (Matrix room members)
+        .route("/api/v1/agents", get(list_agents))
         // VM Config routes
         .route("/api/v1/vm-configs", get(list_vm_configs))
         .route("/api/v1/vm-configs", post(create_vm_config))
@@ -140,20 +240,94 @@ async fn main() {
     tracing::info!("Listening on {}", listener.local_addr().unwrap());
     
     axum::serve(listener, app).await.unwrap();
+    
+    Ok(())
 }
 
-async fn health_handler() -> Json<HealthResponse> {
+async fn sync_matrix_room(
+    client: Client, 
+    room_id: OwnedRoomId, 
+    room_id_str: String,
+    matrix_state: MatrixState,
+) {
+    let mut sync_settings = SyncSettings::new();
+    sync_settings = sync_settings.timeout(std::time::Duration::from_secs(30));
+
+    // Get the room
+    let room = match client.get_room(&room_id) {
+        Some(r) => r,
+        None => {
+            tracing::error!("Room not found: {}", room_id);
+            return;
+        }
+    };
+
+    // Initial member sync - placeholder
+    // Room member tracking requires fixing RoomMemberships API access
+    tracing::info!("Joined room: {}", room_id);
+    let members_list: Vec<MatrixUser> = vec![];
+
+    // Update shared state
+    let mut stored_members = matrix_state.room_members.write().await;
+    *stored_members = members_list.clone();
+
+    // Set up room message handler
+    room.add_event_handler(
+        |ev: OriginalSyncRoomMessageEvent, room: Room| async move {
+            let msg_body = ev.content.body();
+            let sender = ev.sender.to_string();
+            tracing::info!("Message from {}: {}", sender, msg_body);
+            
+            // TODO: Process commands from chat messages
+            // For example: "list vms", "create queue", etc.
+        },
+    );
+
+    // Initial sync
+    if let Err(e) = client.sync_once(sync_settings.clone()).await {
+        tracing::error!("Initial sync failed: {}", e);
+        return;
+    }
+
+    // Continuous sync loop
+    loop {
+        // TODO: Re-fetch members on each sync to catch joins/leaves
+        // Currently blocked by RoomMemberships being private in matrix-sdk 0.9
+
+        if let Err(e) = client.sync_once(sync_settings.clone()).await {
+            tracing::error!("Sync error: {}", e);
+            tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+            continue;
+        }
+    }
+}
+
+async fn health_handler(State(state): State<Arc<AppState>>) -> Json<HealthResponse> {
+    let members = state.room_members.read().await;
     Json(HealthResponse {
         status: "healthy".to_string(),
-        version: env!("CARGO_PKG_VERSION").to_string(),
+        version: state.version.clone(),
+        matrix_connected: state.matrix_client.is_some(),
+        matrix_room_id: state.matrix_room_id.clone(),
+        room_members_count: members.len(),
     })
 }
 
 async fn status_handler(State(state): State<Arc<AppState>>) -> Json<HealthResponse> {
+    let members = state.room_members.read().await;
     Json(HealthResponse {
         status: "ok".to_string(),
         version: state.version.clone(),
+        matrix_connected: state.matrix_client.is_some(),
+        matrix_room_id: state.matrix_room_id.clone(),
+        room_members_count: members.len(),
     })
+}
+
+// Agent handlers (Matrix room members)
+async fn list_agents(State(state): State<Arc<AppState>>) -> Json<Vec<MatrixUser>> {
+    let members = state.room_members.read().await;
+    Json(members.clone())
 }
 
 // VM Config handlers

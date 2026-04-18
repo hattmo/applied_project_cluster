@@ -15,6 +15,9 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 uuid = { version = "1", features = ["v4"] }
 chrono = { version = "0.4", features = ["serde"] }
+matrix-sdk = { version = "0.9", default-features = false, features = ["rustls-tls"] }
+matrix-sdk-base = { version = "0.9", default-features = false }
+anyhow = "1"
 
 [profile.release]
 opt-level = 3
