@@ -326,8 +326,8 @@ async fn sync_matrix_room(
 
     // Continuous sync loop
     loop {
-        // Re-fetch members on each sync to catch joins/leaves using raw API
-        if let Ok(members) = room.members(ruma::RoomMemberships::JOIN).await {
+        // Re-fetch members on each sync to catch joins/leaves
+        if let Ok(members) = room.members(matrix_sdk::room::RoomMemberships::all()) {
             let mut members_list: Vec<MatrixUser> = members
                 .into_iter()
                 .filter(|m| {
