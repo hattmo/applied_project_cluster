@@ -9,10 +9,10 @@ use matrix_sdk::{
     config::SyncSettings,
     room::Room,
     ruma::{
+        api::room::RoomMemberRole,
         events::room::message::{RoomMessageEventContent, OriginalSyncRoomMessageEvent},
         room_id,
     },
-    room::RoomMemberships,
     Client,
 };
 use serde::{Deserialize, Serialize};
@@ -264,7 +264,7 @@ async fn sync_matrix_room(
     };
 
     // Initial member sync
-    if let Ok(members) = room.members(RoomMemberships::ACTIVE).await {
+    if let Ok(members) = room.members(matrix_sdk::room::RoomMemberships::ACTIVE).await {
         let mut members_list: Vec<MatrixUser> = members
             .iter()
             .filter(|m| {
@@ -329,7 +329,7 @@ async fn sync_matrix_room(
     // Continuous sync loop
     loop {
         // Re-fetch members on each sync to catch joins/leaves
-        if let Ok(members) = room.members(RoomMemberships::ACTIVE).await {
+        if let Ok(members) = room.members(matrix_sdk::room::RoomMemberships::ACTIVE).await {
             let mut members_list: Vec<MatrixUser> = members
                 .iter()
                 .filter(|m| {
