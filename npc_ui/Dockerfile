@@ -18,9 +18,6 @@ RUN npm run build
 # =============================================================================
 FROM rust:latest AS backend-builder
 
-# Install dependencies
-RUN apk add --no-cache musl-dev
-
 WORKDIR /app/backend
 
 COPY backend/Cargo.toml ./
