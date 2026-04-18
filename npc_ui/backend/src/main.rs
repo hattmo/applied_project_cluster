@@ -1,14 +1,15 @@
 use axum::{
     extract::{Path, State},
     http::StatusCode,
-    response::{Html, Json},
+    response::Json,
     routing::{delete, get, post, put},
     Router,
 };
 use matrix_sdk::{
     config::SyncSettings,
-    room::{Room, RoomMemberships},
+    room::Room,
     ruma::{
+        api::client::room::get_member_events,
         events::room::message::{RoomMessageEventContent, OriginalSyncRoomMessageEvent},
         room_id,
         OwnedRoomId,
@@ -163,7 +164,7 @@ async fn main() -> anyhow::Result<()> {
                         
                         // Spawn sync task if room_id is provided
                         if let Some(room_id_str) = &matrix_room_id {
-                            match matrix_sdk::ruma::OwnedRoomId::try_from(room_id_str.as_str()) {
+                            match OwnedRoomId::try_from(room_id_str.as_str()) {
                                 Ok(room_id) => {
                                     let sync_client = client.clone();
                                     let room_id_clone = room_id_str.clone();
@@ -247,7 +248,7 @@ async fn main() -> anyhow::Result<()> {
 
 async fn sync_matrix_room(
     client: Client, 
-    room_id: matrix_sdk::ruma::OwnedRoomId, 
+    room_id: OwnedRoomId, 
     room_id_str: String,
     matrix_state: MatrixState,
 ) {
@@ -263,20 +264,21 @@ async fn sync_matrix_room(
         }
     };
 
-    // Initial member sync - get all members
-    if let Ok(members) = room.members(RoomMemberships::JOIN).await {
-        let mut members_list: Vec<MatrixUser> = members
+    // Initial member sync using raw API
+    if let Ok(response) = client.send(get_member_events::v3::Request::new(room_id.clone())).await {
+        let mut members_list: Vec<MatrixUser> = response
+            .chunk
             .iter()
-            .filter(|m| {
+            .filter(|(user_id, _)| {
                 // Filter out the bot itself
-                m.user_id() != client.user_id().unwrap_or(&matrix_sdk::ruma::user_id!("@unknown:unknown").to_owned())
+                *user_id != client.user_id().unwrap_or(&ruma::user_id!("@unknown:unknown").to_owned())
             })
-            .map(|m| MatrixUser {
-                user_id: m.user_id().to_string(),
-                display_name: m.display_name().map(|d| d.to_string()),
-                avatar_url: m.avatar_url().map(|u| u.to_string()),
-                is_bot: m.user_id().localpart().contains("bot") || 
-                        m.display_name().map(|d| d.to_lowercase().contains("bot")).unwrap_or(false),
+            .map(|(user_id, member)| MatrixUser {
+                user_id: user_id.to_string(),
+                display_name: member.content.displayname.clone(),
+                avatar_url: member.content.avatar_url.clone().map(|u| u.to_string()),
+                is_bot: user_id.localpart().contains("bot") || 
+                        member.content.displayname.as_ref().map(|d| d.to_lowercase().contains("bot")).unwrap_or(false),
             })
             .collect();
         
@@ -327,19 +329,20 @@ async fn sync_matrix_room(
 
     // Continuous sync loop
     loop {
-        // Re-fetch members on each sync to catch joins/leaves
-        if let Ok(members) = room.members(RoomMemberships::JOIN).await {
-            let mut members_list: Vec<MatrixUser> = members
+        // Re-fetch members on each sync to catch joins/leaves using raw API
+        if let Ok(response) = client.send(get_member_events::v3::Request::new(room_id.clone())).await {
+            let mut members_list: Vec<MatrixUser> = response
+                .chunk
                 .iter()
-                .filter(|m| {
-                    m.user_id() != client.user_id().unwrap_or(&matrix_sdk::ruma::user_id!("@unknown:unknown").to_owned())
+                .filter(|(user_id, _)| {
+                    *user_id != client.user_id().unwrap_or(&ruma::user_id!("@unknown:unknown").to_owned())
                 })
-                .map(|m| MatrixUser {
-                    user_id: m.user_id().to_string(),
-                    display_name: m.display_name().map(|d| d.to_string()),
-                    avatar_url: m.avatar_url().map(|u| u.to_string()),
-                    is_bot: m.user_id().localpart().contains("bot") || 
-                            m.display_name().map(|d| d.to_lowercase().contains("bot")).unwrap_or(false),
+                .map(|(user_id, member)| MatrixUser {
+                    user_id: user_id.to_string(),
+                    display_name: member.content.displayname.clone(),
+                    avatar_url: member.content.avatar_url.clone().map(|u| u.to_string()),
+                    is_bot: user_id.localpart().contains("bot") || 
+                            member.content.displayname.as_ref().map(|d| d.to_lowercase().contains("bot")).unwrap_or(false),
                 })
                 .collect();
             
