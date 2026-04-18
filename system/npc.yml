@@ -205,3 +205,59 @@ spec:
   resources:
     requests:
       storage: 20Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: npc-ui
+  namespace: npc
+  labels:
+    app: npc-ui
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: npc-ui
+  template:
+    metadata:
+      labels:
+        app: npc-ui
+    spec:
+      containers:
+      - name: npc-ui
+        image: hattmo/npc-ui:latest
+        ports:
+        - containerPort: 3000
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 3000
+          initialDelaySeconds: 10
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 3000
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: npc-ui-service
+  namespace: npc
+spec:
+  type: LoadBalancer
+  selector:
+    app: npc-ui
+  ports:
+  - port: 80
+    targetPort: 3000
+    protocol: TCP
