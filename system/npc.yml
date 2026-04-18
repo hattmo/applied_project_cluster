@@ -200,7 +200,6 @@ metadata:
   name: ollama-pvc
   namespace: npc
 spec:
-  storageClassName: openebs-hostpath
   accessModes:
     - ReadWriteOnce
   resources:
