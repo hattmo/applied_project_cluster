@@ -7,7 +7,7 @@ use axum::{
 };
 use matrix_sdk::{
     config::SyncSettings,
-    room::Room,
+    room::{Room, RoomMemberships},
     ruma::{
         events::room::message::{RoomMessageEventContent, OriginalSyncRoomMessageEvent},
         room_id,
@@ -263,8 +263,8 @@ async fn sync_matrix_room(
         }
     };
 
-    // Initial member sync - get all joined members
-    if let Ok(members) = room.members(matrix_sdk::ruma::RoomMemberships::JOIN).await {
+    // Initial member sync - get all members
+    if let Ok(members) = room.members(RoomMemberships::JOIN).await {
         let mut members_list: Vec<MatrixUser> = members
             .iter()
             .filter(|m| {
@@ -328,7 +328,7 @@ async fn sync_matrix_room(
     // Continuous sync loop
     loop {
         // Re-fetch members on each sync to catch joins/leaves
-        if let Ok(members) = room.members(matrix_sdk::ruma::RoomMemberships::JOIN).await {
+        if let Ok(members) = room.members(RoomMemberships::JOIN).await {
             let mut members_list: Vec<MatrixUser> = members
                 .iter()
                 .filter(|m| {
