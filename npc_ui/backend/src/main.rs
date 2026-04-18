@@ -330,35 +330,6 @@ async fn sync_matrix_room(
     loop {
         // TODO: Re-fetch members on each sync to catch joins/leaves
         // Currently blocked by RoomMemberships being private in matrix-sdk 0.9
-            let mut members_list: Vec<MatrixUser> = members
-                .into_iter()
-                .filter(|m| {
-                    m.user_id() != client.user_id().unwrap_or(&matrix_sdk::ruma::user_id!("@unknown:unknown").to_owned())
-                })
-                .map(|m| MatrixUser {
-                    user_id: m.user_id().to_string(),
-                    display_name: m.display_name().map(|d| d.to_string()),
-                    avatar_url: m.avatar_url().map(|u| u.to_string()),
-                    is_bot: m.user_id().localpart().contains("bot") || 
-                            m.display_name().map(|d| d.to_lowercase().contains("bot")).unwrap_or(false),
-                })
-                .collect();
-            
-            members_list.sort_by(|a, b| {
-                match (a.is_bot, b.is_bot) {
-                    (true, false) => std::cmp::Ordering::Less,
-                    (false, true) => std::cmp::Ordering::Greater,
-                    _ => {
-                        let a_name = a.display_name.as_deref().unwrap_or(&a.user_id);
-                        let b_name = b.display_name.as_deref().unwrap_or(&b.user_id);
-                        a_name.cmp(b_name)
-                    }
-                }
-            });
-
-            let mut stored_members = matrix_state.room_members.write().await;
-            *stored_members = members_list;
-        }
 
         if let Err(e) = client.sync_once(sync_settings.clone()).await {
             tracing::error!("Sync error: {}", e);
