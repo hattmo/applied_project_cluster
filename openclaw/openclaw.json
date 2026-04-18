@@ -1,0 +1,96 @@
+{
+	"agents": {
+		"defaults": {
+			"model": {
+				"primary": "ollama/qwen3.5:cloud"
+			},
+			"workspace": "/home/node/.openclaw/workspace"
+		}
+	},
+	"channels": {
+		"matrix": {
+			"enabled": true,
+			"homeserver": "${MATRIX_URL}",
+			"userId": "${MATRIX_USER}",
+			"password": "${MATRIX_PASSWORD}",
+			"deviceName": "${MATRIX_DEVICE}",
+			"dm": {
+				"policy": "allowlist",
+				"allowFrom": [
+					"@matthew:matrix.hattmo.com"
+				]
+			},
+			"encryption": true,
+			"autoJoin": "always"
+		}
+	},
+	"commands": {
+		"native": "auto",
+		"nativeSkills": "auto",
+		"ownerDisplay": "raw",
+		"restart": true
+	},
+	"discovery": {
+		"mdns": {
+			"mode": "off"
+		}
+	},
+	"gateway": {
+		"bind": "lan",
+		"mode": "local",
+		"port": 18789,
+		"tailscale": {
+			"mode": "off",
+			"resetOnExit": false
+		}
+	},
+	"models": {
+		"providers": {
+			"ollama": {
+				"api": "ollama",
+				"apiKey": "ollama-local",
+				"baseUrl": "http://127.0.0.1:11434",
+				"models": [
+					{
+						"contextWindow": 262144,
+						"cost": {
+							"cacheRead": 0,
+							"cacheWrite": 0,
+							"input": 0,
+							"output": 0
+						},
+						"id": "qwen3.5:cloud",
+						"input": [
+							"text",
+							"image"
+						],
+						"maxTokens": 32768,
+						"name": "qwen3.5:cloud",
+						"reasoning": true
+					}
+				]
+			}
+		}
+	},
+	"plugins": {
+		"allow": [
+			"matrix"
+		],
+		"entries": {
+			"matrix": {
+				"enabled": true
+			}
+		}
+	},
+	"session": {
+		"dmScope": "per-channel-peer"
+	},
+	"tools": {
+		"profile": "coding",
+		"web": {
+			"search": {
+				"enabled": false
+			}
+		}
+	}
+}
