@@ -11,6 +11,7 @@ use matrix_sdk::{
     ruma::{
         events::room::message::OriginalSyncRoomMessageEvent,
         OwnedRoomId,
+        RoomMemberships,
     },
     Client,
 };
@@ -263,7 +264,7 @@ async fn sync_matrix_room(
     };
 
     // Initial member sync - use room API with JOIN filter
-    if let Ok(members) = room.members(matrix_sdk::room::RoomMemberships::JOIN).await {
+    if let Ok(members) = room.members(RoomMemberships::JOIN).await {
         let mut members_list: Vec<MatrixUser> = members
             .into_iter()
             .filter(|m| {
