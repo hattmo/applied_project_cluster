@@ -266,47 +266,10 @@ async fn sync_matrix_room(
     // Room member tracking requires fixing RoomMemberships API access
     tracing::info!("Joined room: {}", room_id);
     let members_list: Vec<MatrixUser> = vec![];
-        let mut members_list: Vec<MatrixUser> = members
-            .into_iter()
-            .filter(|m| {
-                // Filter out the bot itself
-                m.user_id() != client.user_id().unwrap_or(&matrix_sdk::ruma::user_id!("@unknown:unknown").to_owned())
-            })
-            .map(|m| MatrixUser {
-                user_id: m.user_id().to_string(),
-                display_name: m.display_name().map(|d| d.to_string()),
-                avatar_url: m.avatar_url().map(|u| u.to_string()),
-                is_bot: m.user_id().localpart().contains("bot") || 
-                        m.display_name().map(|d| d.to_lowercase().contains("bot")).unwrap_or(false),
-            })
-            .collect();
-        
-        // Sort: bots first, then by display name
-        members_list.sort_by(|a, b| {
-            match (a.is_bot, b.is_bot) {
-                (true, false) => std::cmp::Ordering::Less,
-                (false, true) => std::cmp::Ordering::Greater,
-                _ => {
-                    let a_name = a.display_name.as_deref().unwrap_or(&a.user_id);
-                    let b_name = b.display_name.as_deref().unwrap_or(&b.user_id);
-                    a_name.cmp(b_name)
-                }
-            }
-        });
 
-        tracing::info!("Loaded {} room members", members_list.len());
-        
-        // Update shared state
-        let mut stored_members = matrix_state.room_members.write().await;
-        *stored_members = members_list.clone();
-        
-        for member in &members_list {
-            tracing::info!("  - {} ({})", 
-                member.display_name.as_deref().unwrap_or(&member.user_id),
-                member.user_id
-            );
-        }
-    }
+    // Update shared state
+    let mut stored_members = matrix_state.room_members.write().await;
+    *stored_members = members_list.clone();
 
     // Set up room message handler
     room.add_event_handler(
