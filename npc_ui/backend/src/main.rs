@@ -15,7 +15,7 @@ use matrix_sdk::{
     },
     Client,
 };
-use ruma::RoomMemberships;
+use matrix_sdk_base::ruma::RoomMemberships;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio::sync::RwLock;
