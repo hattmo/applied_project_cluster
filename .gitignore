@@ -32,3 +32,6 @@ htmlcov/
 .env
 config.ini
 *.nu
+
+# Rust ignore
+target
