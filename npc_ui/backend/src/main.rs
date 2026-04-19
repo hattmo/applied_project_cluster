@@ -1,51 +1,72 @@
+#![feature(try_blocks)]
 use axum::{
+    Router,
     extract::{Path, State},
     http::StatusCode,
     response::Json,
     routing::{delete, get, post, put},
-    Router,
 };
-use matrix_sdk::{
-    config::SyncSettings,
-    room::Room,
-    ruma::{
-        events::room::message::OriginalSyncRoomMessageEvent,
-        OwnedRoomId,
-    },
-    Client,
-};
+use matrix_sdk::{Client, RoomMemberships, config::SyncSettings, ruma::OwnedRoomId};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio::sync::RwLock;
+use tokio_util::sync::CancellationToken;
 use tower_http::{cors::CorsLayer, services::ServeDir, trace::TraceLayer};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 #[derive(Clone)]
 struct AppState {
-    version: String,
+    version: &'static str,
+    home_server: &'static str,
+    room_id: &'static str,
+    user_id: &'static str,
     vm_configs: Arc<RwLock<Vec<VmConfig>>>,
     task_queues: Arc<RwLock<Vec<TaskQueue>>>,
-    matrix_client: Option<Client>,
-    matrix_room_id: Option<String>,
-    room_members: Arc<RwLock<Vec<MatrixUser>>>,
+    client: Client,
+    matrix_state: MatrixState,
+}
+
+#[derive(Clone)]
+struct MatrixState {
+    room_members: Arc<RwLock<Box<[MatrixUser]>>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct MatrixUser {
     user_id: String,
     display_name: Option<String>,
-    avatar_url: Option<String>,
-    is_bot: bool,
+}
+
+#[derive(Serialize)]
+struct HealthResponse {
+    version: &'static str,
+    home_server: &'static str,
+    room_id: &'static str,
+    user_id: &'static str,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct VmConfig {
     id: String,
     name: String,
-    agent_id: String,
+    user_id: String,
     enabled: bool,
     created_at: String,
     updated_at: String,
+}
+
+#[derive(Deserialize)]
+struct CreateVmConfig {
+    name: String,
+    user_id: String,
+    enabled: bool,
+}
+
+#[derive(Deserialize)]
+struct UpdateVmConfig {
+    name: Option<String>,
+    user_id: Option<String>,
+    enabled: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -54,7 +75,6 @@ struct TaskQueue {
     vm_id: String,
     name: String,
     tasks: Vec<Task>,
-    loop_enabled: bool,
     enabled: bool,
     created_at: String,
     updated_at: String,
@@ -62,61 +82,25 @@ struct TaskQueue {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct Task {
-    id: String,
     description: String,
     keystrokes: Option<String>,
     delay_ms: Option<u64>,
-    completed: bool,
-}
-
-#[derive(Serialize)]
-struct HealthResponse {
-    status: String,
-    version: String,
-    matrix_connected: bool,
-    matrix_room_id: Option<String>,
-    room_members_count: usize,
-}
-
-#[derive(Deserialize)]
-struct CreateVmConfig {
-    name: String,
-    agent_id: String,
-}
-
-#[derive(Deserialize)]
-struct UpdateVmConfig {
-    name: Option<String>,
-    agent_id: Option<String>,
-    enabled: Option<bool>,
 }
 
 #[derive(Deserialize)]
 struct CreateTaskQueue {
     vm_id: String,
     name: String,
-    tasks: Option<Vec<CreateTask>>,
-    loop_enabled: Option<bool>,
-}
-
-#[derive(Deserialize)]
-struct CreateTask {
-    description: String,
-    keystrokes: Option<String>,
-    delay_ms: Option<u64>,
+    tasks: Vec<Task>,
+    enabled: bool,
 }
 
 #[derive(Deserialize)]
 struct UpdateTaskQueue {
+    vm_id: Option<String>,
     name: Option<String>,
-    tasks: Option<Vec<CreateTask>>,
-    loop_enabled: Option<bool>,
+    tasks: Option<Vec<Task>>,
     enabled: Option<bool>,
-}
-
-#[derive(Clone)]
-struct MatrixState {
-    room_members: Arc<RwLock<Vec<MatrixUser>>>,
 }
 
 #[tokio::main]
@@ -124,92 +108,64 @@ async fn main() -> anyhow::Result<()> {
     // Initialize tracing
     tracing_subscriber::registry()
         .with(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "npc_ui_backend=debug,tower_http=debug,matrix_sdk=debug".into()),
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
+                "npc_ui_backend=debug,tower_http=debug,matrix_sdk=debug".into()
+            }),
         )
         .with(tracing_subscriber::fmt::layer())
         .init();
 
     // Load Matrix credentials from environment
-    let matrix_homeserver = std::env::var("MATRIX_HOMESERVER").ok();
-    let matrix_user = std::env::var("MATRIX_USER").ok();
-    let matrix_password = std::env::var("MATRIX_PASSWORD").ok();
-    let matrix_room_id = std::env::var("MATRIX_ROOM_ID").ok();
+    let home_server: &str = std::env::var("MATRIX_HOMESERVER")?.leak();
+    let user_id: &str = std::env::var("MATRIX_USER")?.leak();
+    let room_id: &str = std::env::var("MATRIX_ROOM_ID")?.leak();
+    let password: &str = std::env::var("MATRIX_PASSWORD")?.leak();
 
-    let (matrix_client, matrix_room_id_opt, room_members) = if let (Some(homeserver), Some(user), Some(password)) = 
-        (&matrix_homeserver, &matrix_user, &matrix_password) 
-    {
-        tracing::info!("Connecting to Matrix homeserver: {}", homeserver);
-        
-        let homeserver_url = if homeserver.starts_with("http") {
-            homeserver.clone()
-        } else {
-            format!("https://{}", homeserver)
-        };
+    let client = Client::builder()
+        .homeserver_url(&home_server)
+        .build()
+        .await?;
+    let response = client
+        .matrix_auth()
+        .login_username(user_id, password)
+        .send()
+        .await?;
+    tracing::info!("Matrix login successful: {}", response.user_id);
 
-        let room_members: Arc<RwLock<Vec<MatrixUser>>> = Arc::new(RwLock::new(Vec::new()));
-
-        match Client::builder()
-            .homeserver_url(homeserver_url)
-            .build()
-            .await
-        {
-            Ok(client) => {
-                // Login
-                match client.matrix_auth().login_username(&user, &password).send().await {
-                    Ok(response) => {
-                        tracing::info!("Matrix login successful: {}", response.user_id);
-                        
-                        // Spawn sync task if room_id is provided
-                        if let Some(room_id_str) = &matrix_room_id {
-                            match OwnedRoomId::try_from(room_id_str.as_str()) {
-                                Ok(room_id) => {
-                                    let sync_client = client.clone();
-                                    let room_id_clone = room_id_str.clone();
-                                    let matrix_state = MatrixState {
-                                        room_members: room_members.clone(),
-                                    };
-                                    tokio::spawn(async move {
-                                        sync_matrix_room(sync_client, room_id, room_id_clone, matrix_state).await;
-                                    });
-                                    tracing::info!("Matrix sync started for room: {}", room_id_str);
-                                }
-                                Err(e) => {
-                                    tracing::error!("Invalid room ID '{}': {}", room_id_str, e);
-                                }
-                            }
-                        }
-                        
-                        (Some(client), matrix_room_id, room_members)
-                    }
-                    Err(e) => {
-                        tracing::error!("Matrix login failed: {}", e);
-                        (None, None, Arc::new(RwLock::new(Vec::new())))
-                    }
-                }
-            }
-            Err(e) => {
-                tracing::error!("Matrix client build failed: {}", e);
-                (None, None, Arc::new(RwLock::new(Vec::new())))
-            }
-        }
-    } else {
-        tracing::warn!("Matrix credentials not provided, running without Matrix integration");
-        (None, None, Arc::new(RwLock::new(Vec::new())))
+    let matrix_state = MatrixState {
+        room_members: Arc::new(RwLock::new(Default::default())),
     };
+    let token = CancellationToken::new();
+    let job_token = token.clone();
+    let job_client = client.clone();
+    let job_matrix_state = matrix_state.clone();
+    let background_job = tokio::spawn(async move {
+        let _guard = job_token.drop_guard();
+        let res = try {
+            sync_matrix_room(
+                job_client,
+                OwnedRoomId::try_from(room_id.to_string()).map_err(|e| anyhow::anyhow!(e))?,
+                job_matrix_state,
+            )
+            .await?;
+        };
+        res
+    });
 
-    let state = Arc::new(AppState {
-        version: env!("CARGO_PKG_VERSION").to_string(),
+    let state = AppState {
+        version: env!("CARGO_PKG_VERSION"),
+        home_server,
+        user_id,
+        room_id,
         vm_configs: Arc::new(RwLock::new(Vec::new())),
         task_queues: Arc::new(RwLock::new(Vec::new())),
-        matrix_client,
-        matrix_room_id: matrix_room_id_opt,
-        room_members,
-    });
+        client,
+        matrix_state,
+    };
 
     let app = Router::new()
         // API routes
-        .route("/health", get(health_handler))
+        .route("/health", get(status_handler))
         .route("/api/v1/status", get(status_handler))
         // Agent routes (Matrix room members)
         .route("/api/v1/agents", get(list_agents))
@@ -225,139 +181,115 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/v1/task-queues/:id", get(get_task_queue))
         .route("/api/v1/task-queues/:id", put(update_task_queue))
         .route("/api/v1/task-queues/:id", delete(delete_task_queue))
-        .route("/api/v1/task-queues/:id/tasks", post(add_task_to_queue))
-        .route("/api/v1/task-queues/:queue_id/tasks/:task_id", delete(delete_task_from_queue))
         // Static files - serve frontend
-        .nest_service("/", ServeDir::new("/app/frontend/static").append_index_html_on_directories(true))
+        .nest_service(
+            "/",
+            ServeDir::new("/app/frontend/static").append_index_html_on_directories(true),
+        )
         .with_state(state)
         .layer(TraceLayer::new_for_http())
         .layer(CorsLayer::permissive());
 
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:3000")
-        .await
-        .unwrap();
-    
+    let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await?;
+
     tracing::info!("Listening on {}", listener.local_addr().unwrap());
-    
-    axum::serve(listener, app).await.unwrap();
-    
+
+    let serve = axum::serve(listener, app).with_graceful_shutdown(token.cancelled_owned());
+    serve.await?;
+    background_job.await??;
     Ok(())
 }
 
 async fn sync_matrix_room(
-    client: Client, 
-    room_id: OwnedRoomId, 
-    room_id_str: String,
+    client: Client,
+    room_id: OwnedRoomId,
     matrix_state: MatrixState,
-) {
+) -> anyhow::Result<()> {
     let mut sync_settings = SyncSettings::new();
     sync_settings = sync_settings.timeout(std::time::Duration::from_secs(30));
 
     // Get the room
-    let room = match client.get_room(&room_id) {
-        Some(r) => r,
-        None => {
-            tracing::error!("Room not found: {}", room_id);
-            return;
-        }
-    };
-
+    let room = client
+        .get_room(&room_id)
+        .ok_or(anyhow::anyhow!("Room Not Found"))?;
     // Initial member sync - placeholder
     // Room member tracking requires fixing RoomMemberships API access
     tracing::info!("Joined room: {}", room_id);
-    let members_list: Vec<MatrixUser> = vec![];
 
-    // Update shared state
-    let mut stored_members = matrix_state.room_members.write().await;
-    *stored_members = members_list.clone();
-
-    // Set up room message handler
-    room.add_event_handler(
-        |ev: OriginalSyncRoomMessageEvent, room: Room| async move {
-            let msg_body = ev.content.body();
-            let sender = ev.sender.to_string();
-            tracing::info!("Message from {}: {}", sender, msg_body);
-            
-            // TODO: Process commands from chat messages
-            // For example: "list vms", "create queue", etc.
-        },
-    );
-
-    // Initial sync
-    if let Err(e) = client.sync_once(sync_settings.clone()).await {
-        tracing::error!("Initial sync failed: {}", e);
-        return;
-    }
-
-    // Continuous sync loop
     loop {
-        // TODO: Re-fetch members on each sync to catch joins/leaves
-        // Currently blocked by RoomMemberships being private in matrix-sdk 0.9
-
         if let Err(e) = client.sync_once(sync_settings.clone()).await {
-            tracing::error!("Sync error: {}", e);
-            tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+            tracing::error!("Initial sync failed: {}", e);
             continue;
-        }
+        };
+
+        let members = room.members(RoomMemberships::all()).await.unwrap();
+        let members: Box<[MatrixUser]> = members
+            .iter()
+            .map(|m| MatrixUser {
+                user_id: m.user_id().as_str().to_owned(),
+                display_name: m.display_name().map(ToOwned::to_owned),
+            })
+            .collect();
+
+        // Update shared state
+        let mut stored_members = matrix_state.room_members.write().await;
+        *stored_members = members;
     }
 }
 
-async fn health_handler(State(state): State<Arc<AppState>>) -> Json<HealthResponse> {
-    let members = state.room_members.read().await;
+async fn status_handler(State(state): State<AppState>) -> Json<HealthResponse> {
+    let AppState {
+        version,
+        home_server,
+        room_id,
+        user_id,
+        ..
+    } = state;
     Json(HealthResponse {
-        status: "healthy".to_string(),
-        version: state.version.clone(),
-        matrix_connected: state.matrix_client.is_some(),
-        matrix_room_id: state.matrix_room_id.clone(),
-        room_members_count: members.len(),
-    })
-}
-
-async fn status_handler(State(state): State<Arc<AppState>>) -> Json<HealthResponse> {
-    let members = state.room_members.read().await;
-    Json(HealthResponse {
-        status: "ok".to_string(),
-        version: state.version.clone(),
-        matrix_connected: state.matrix_client.is_some(),
-        matrix_room_id: state.matrix_room_id.clone(),
-        room_members_count: members.len(),
+        version,
+        home_server,
+        room_id,
+        user_id,
     })
 }
 
 // Agent handlers (Matrix room members)
-async fn list_agents(State(state): State<Arc<AppState>>) -> Json<Vec<MatrixUser>> {
-    let members = state.room_members.read().await;
+async fn list_agents(State(state): State<AppState>) -> Json<Box<[MatrixUser]>> {
+    let members = state.matrix_state.room_members.read().await;
     Json(members.clone())
 }
 
 // VM Config handlers
-async fn list_vm_configs(State(state): State<Arc<AppState>>) -> Json<Vec<VmConfig>> {
+async fn list_vm_configs(State(state): State<AppState>) -> Json<Vec<VmConfig>> {
     let configs = state.vm_configs.read().await;
     Json(configs.clone())
 }
 
 async fn create_vm_config(
-    State(state): State<Arc<AppState>>,
+    State(state): State<AppState>,
     Json(payload): Json<CreateVmConfig>,
 ) -> (StatusCode, Json<VmConfig>) {
     let now = chrono::Utc::now().to_rfc3339();
+    let CreateVmConfig {
+        name,
+        user_id,
+        enabled,
+    } = payload;
     let config = VmConfig {
         id: uuid::Uuid::new_v4().to_string(),
-        name: payload.name,
-        agent_id: payload.agent_id,
-        enabled: true,
         created_at: now.clone(),
         updated_at: now,
+        name,
+        user_id,
+        enabled,
     };
-    
-    let mut configs = state.vm_configs.write().await;
-    configs.push(config.clone());
-    
+
+    state.vm_configs.write().await.push(config.clone());
     (StatusCode::CREATED, Json(config))
 }
 
 async fn get_vm_config(
-    State(state): State<Arc<AppState>>,
+    State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<Json<VmConfig>, StatusCode> {
     let configs = state.vm_configs.read().await;
@@ -369,7 +301,7 @@ async fn get_vm_config(
 }
 
 async fn update_vm_config(
-    State(state): State<Arc<AppState>>,
+    State(state): State<AppState>,
     Path(id): Path<String>,
     Json(payload): Json<UpdateVmConfig>,
 ) -> Result<Json<VmConfig>, StatusCode> {
@@ -378,23 +310,23 @@ async fn update_vm_config(
         .iter_mut()
         .find(|c| c.id == id)
         .ok_or(StatusCode::NOT_FOUND)?;
-    
+
     if let Some(name) = payload.name {
         config.name = name;
     }
-    if let Some(agent_id) = payload.agent_id {
-        config.agent_id = agent_id;
+    if let Some(user_id) = payload.user_id {
+        config.user_id = user_id;
     }
     if let Some(enabled) = payload.enabled {
         config.enabled = enabled;
     }
     config.updated_at = chrono::Utc::now().to_rfc3339();
-    
+
     Ok(Json(config.clone()))
 }
 
 async fn delete_vm_config(
-    State(state): State<Arc<AppState>>,
+    State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<StatusCode, StatusCode> {
     let mut configs = state.vm_configs.write().await;
@@ -407,45 +339,34 @@ async fn delete_vm_config(
 }
 
 // Task Queue handlers
-async fn list_task_queues(State(state): State<Arc<AppState>>) -> Json<Vec<TaskQueue>> {
+async fn list_task_queues(State(state): State<AppState>) -> Json<Vec<TaskQueue>> {
     let queues = state.task_queues.read().await;
     Json(queues.clone())
 }
 
 async fn create_task_queue(
-    State(state): State<Arc<AppState>>,
+    State(state): State<AppState>,
     Json(payload): Json<CreateTaskQueue>,
 ) -> (StatusCode, Json<TaskQueue>) {
     let now = chrono::Utc::now().to_rfc3339();
-    let tasks = payload.tasks.unwrap_or_default().into_iter().map(|t| {
-        Task {
-            id: uuid::Uuid::new_v4().to_string(),
-            description: t.description,
-            keystrokes: t.keystrokes,
-            delay_ms: t.delay_ms,
-            completed: false,
-        }
-    }).collect();
-    
     let queue = TaskQueue {
         id: uuid::Uuid::new_v4().to_string(),
         vm_id: payload.vm_id,
         name: payload.name,
-        tasks,
-        loop_enabled: payload.loop_enabled.unwrap_or(false),
-        enabled: true,
+        tasks: payload.tasks,
+        enabled: payload.enabled,
         created_at: now.clone(),
         updated_at: now,
     };
-    
+
     let mut queues = state.task_queues.write().await;
     queues.push(queue.clone());
-    
+
     (StatusCode::CREATED, Json(queue))
 }
 
 async fn get_task_queue(
-    State(state): State<Arc<AppState>>,
+    State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<Json<TaskQueue>, StatusCode> {
     let queues = state.task_queues.read().await;
@@ -457,7 +378,7 @@ async fn get_task_queue(
 }
 
 async fn update_task_queue(
-    State(state): State<Arc<AppState>>,
+    State(state): State<AppState>,
     Path(id): Path<String>,
     Json(payload): Json<UpdateTaskQueue>,
 ) -> Result<Json<TaskQueue>, StatusCode> {
@@ -466,34 +387,25 @@ async fn update_task_queue(
         .iter_mut()
         .find(|q| q.id == id)
         .ok_or(StatusCode::NOT_FOUND)?;
-    
+
     if let Some(name) = payload.name {
         queue.name = name;
     }
     if let Some(tasks) = payload.tasks {
-        queue.tasks = tasks.into_iter().map(|t| {
-            Task {
-                id: uuid::Uuid::new_v4().to_string(),
-                description: t.description,
-                keystrokes: t.keystrokes,
-                delay_ms: t.delay_ms,
-                completed: false,
-            }
-        }).collect();
+        queue.tasks = tasks;
     }
-    if let Some(loop_enabled) = payload.loop_enabled {
-        queue.loop_enabled = loop_enabled;
+    if let Some(vm_id) = payload.vm_id {
+        queue.vm_id = vm_id;
     }
     if let Some(enabled) = payload.enabled {
         queue.enabled = enabled;
     }
     queue.updated_at = chrono::Utc::now().to_rfc3339();
-    
     Ok(Json(queue.clone()))
 }
 
 async fn delete_task_queue(
-    State(state): State<Arc<AppState>>,
+    State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<StatusCode, StatusCode> {
     let mut queues = state.task_queues.write().await;
@@ -502,52 +414,5 @@ async fn delete_task_queue(
         .position(|q| q.id == id)
         .ok_or(StatusCode::NOT_FOUND)?;
     queues.remove(pos);
-    Ok(StatusCode::NO_CONTENT)
-}
-
-async fn add_task_to_queue(
-    State(state): State<Arc<AppState>>,
-    Path(queue_id): Path<String>,
-    Json(payload): Json<CreateTask>,
-) -> Result<Json<TaskQueue>, StatusCode> {
-    let mut queues = state.task_queues.write().await;
-    let queue = queues
-        .iter_mut()
-        .find(|q| q.id == queue_id)
-        .ok_or(StatusCode::NOT_FOUND)?;
-    
-    let task = Task {
-        id: uuid::Uuid::new_v4().to_string(),
-        description: payload.description,
-        keystrokes: payload.keystrokes,
-        delay_ms: payload.delay_ms,
-        completed: false,
-    };
-    
-    queue.tasks.push(task);
-    queue.updated_at = chrono::Utc::now().to_rfc3339();
-    
-    Ok(Json(queue.clone()))
-}
-
-async fn delete_task_from_queue(
-    State(state): State<Arc<AppState>>,
-    Path((queue_id, task_id)): Path<(String, String)>,
-) -> Result<StatusCode, StatusCode> {
-    let mut queues = state.task_queues.write().await;
-    let queue = queues
-        .iter_mut()
-        .find(|q| q.id == queue_id)
-        .ok_or(StatusCode::NOT_FOUND)?;
-    
-    let pos = queue
-        .tasks
-        .iter()
-        .position(|t| t.id == task_id)
-        .ok_or(StatusCode::NOT_FOUND)?;
-    
-    queue.tasks.remove(pos);
-    queue.updated_at = chrono::Utc::now().to_rfc3339();
-    
     Ok(StatusCode::NO_CONTENT)
 }
