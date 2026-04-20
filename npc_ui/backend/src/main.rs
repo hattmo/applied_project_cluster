@@ -1,4 +1,3 @@
-#![feature(try_blocks)]
 use axum::{
     Router,
     extract::{Path, State},
@@ -6,10 +5,17 @@ use axum::{
     response::Json,
     routing::{delete, get, post, put},
 };
-use matrix_sdk::{Client, RoomMemberships, config::SyncSettings, ruma::OwnedRoomId};
+use matrix_sdk::{
+    Client, RoomMemberships,
+    config::SyncSettings,
+    ruma::{
+        OwnedRoomId, RoomId,
+        events::{SyncStateEvent, room::member::SyncRoomMemberEvent},
+    },
+};
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
-use tokio::sync::RwLock;
+use std::{sync::Arc, time::Duration};
+use tokio::{sync::RwLock, time::sleep};
 use tokio_util::sync::CancellationToken;
 use tower_http::{cors::CorsLayer, services::ServeDir, trace::TraceLayer};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
@@ -135,22 +141,14 @@ async fn main() -> anyhow::Result<()> {
     let matrix_state = MatrixState {
         room_members: Arc::new(RwLock::new(Default::default())),
     };
+
     let token = CancellationToken::new();
-    let job_token = token.clone();
-    let job_client = client.clone();
-    let job_matrix_state = matrix_state.clone();
-    let background_job = tokio::spawn(async move {
-        let _guard = job_token.drop_guard();
-        let res = try {
-            sync_matrix_room(
-                job_client,
-                OwnedRoomId::try_from(room_id.to_string()).map_err(|e| anyhow::anyhow!(e))?,
-                job_matrix_state,
-            )
-            .await?;
-        };
-        res
-    });
+    let background_job = tokio::spawn(sync_matrix_room(
+        token.clone(),
+        client.clone(),
+        OwnedRoomId::try_from(room_id.to_string()).map_err(|e| anyhow::anyhow!(e))?,
+        matrix_state.clone(),
+    ));
 
     let state = AppState {
         version: env!("CARGO_PKG_VERSION"),
@@ -192,7 +190,13 @@ async fn main() -> anyhow::Result<()> {
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await?;
 
-    tracing::info!("Listening on {}", listener.local_addr().unwrap());
+    tracing::info!(
+        "Listening on {}",
+        listener
+            .local_addr()
+            .map(|addr| addr.to_string())
+            .unwrap_or_else(|_| { "<Unknown>".to_string() })
+    );
 
     let serve = axum::serve(listener, app).with_graceful_shutdown(token.cancelled_owned());
     serve.await?;
@@ -201,28 +205,29 @@ async fn main() -> anyhow::Result<()> {
 }
 
 async fn sync_matrix_room(
+    token: CancellationToken,
     client: Client,
     room_id: OwnedRoomId,
     matrix_state: MatrixState,
 ) -> anyhow::Result<()> {
-    let mut sync_settings = SyncSettings::new();
-    sync_settings = sync_settings.timeout(std::time::Duration::from_secs(30));
-
-    // Get the room
+    let _drop = token.drop_guard_ref();
     let room = client
         .get_room(&room_id)
         .ok_or(anyhow::anyhow!("Room Not Found"))?;
-    // Initial member sync - placeholder
-    // Room member tracking requires fixing RoomMemberships API access
     tracing::info!("Joined room: {}", room_id);
 
     loop {
-        if let Err(e) = client.sync_once(sync_settings.clone()).await {
-            tracing::error!("Initial sync failed: {}", e);
-            continue;
+        if let None = token
+            .run_until_cancelled(sleep(Duration::from_secs(5)))
+            .await
+        {
+            break;
         };
 
-        let members = room.members(RoomMemberships::all()).await.unwrap();
+        let Ok(members) = room.members(RoomMemberships::all()).await else {
+            tracing::error!("Failed to get room members");
+            continue;
+        };
         let members: Box<[MatrixUser]> = members
             .iter()
             .map(|m| MatrixUser {
@@ -235,6 +240,7 @@ async fn sync_matrix_room(
         let mut stored_members = matrix_state.room_members.write().await;
         *stored_members = members;
     }
+    Ok(())
 }
 
 async fn status_handler(State(state): State<AppState>) -> Json<HealthResponse> {
