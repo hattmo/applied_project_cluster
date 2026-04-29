@@ -145,22 +145,22 @@ spec:
         - name: MATRIX_URL
           valueFrom:
             secretKeyRef:
-              name: matrix-creds
+              name: agent-matrix-creds
               key: url
         - name: MATRIX_USER
           valueFrom:
             secretKeyRef:
-              name: matrix-creds
+              name: agent-matrix-creds
               key: user
         - name: MATRIX_PASSWORD
           valueFrom:
             secretKeyRef:
-              name: matrix-creds
+              name: agent-matrix-creds
               key: password
         - name: MATRIX_DEVICE
           valueFrom:
             secretKeyRef:
-              name: matrix-creds
+              name: agent-matrix-creds
               key: device
         ports:
         - containerPort: 18789
@@ -247,6 +247,28 @@ spec:
           limits:
             memory: "512Mi"
             cpu: "500m"
+        env:
+        - name: MATRIX_URL
+          valueFrom:
+            secretKeyRef:
+              name: ui-matrix-creds
+              key: url
+        - name: MATRIX_USER
+          valueFrom:
+            secretKeyRef:
+              name: ui-matrix-creds
+              key: user
+        - name: MATRIX_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: ui-matrix-creds
+              key: password
+        - name: MATRIX_ROOM_ID
+          valueFrom:
+            secretKeyRef:
+              name: ui-matrix-creds
+              key: room
+
 ---
 apiVersion: v1
 kind: Service

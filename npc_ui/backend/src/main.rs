@@ -122,10 +122,10 @@ async fn main() -> anyhow::Result<()> {
         .init();
 
     // Load Matrix credentials from environment
-    let home_server: &str = std::env::var("MATRIX_HOMESERVER")?.leak();
+    let home_server: &str = std::env::var("MATRIX_URL")?.leak();
     let user_id: &str = std::env::var("MATRIX_USER")?.leak();
-    let room_id: &str = std::env::var("MATRIX_ROOM_ID")?.leak();
     let password: &str = std::env::var("MATRIX_PASSWORD")?.leak();
+    let room_id: &str = std::env::var("MATRIX_ROOM_ID")?.leak();
 
     let client = Client::builder()
         .homeserver_url(&home_server)
