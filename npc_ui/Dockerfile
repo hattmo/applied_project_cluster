@@ -49,16 +49,16 @@ RUN addgroup -g 1000 appgroup && \
 WORKDIR /app
 
 # Create directories
-RUN mkdir -p /app/backend /app/frontend/static
+RUN mkdir -p /app/frontend/static
 
 # Copy backend binary (from musl target directory)
-COPY --from=backend-builder /app/backend/target/x86_64-unknown-linux-musl/release/npc-ui-backend /app/backend/npc-ui-backend
+COPY --from=backend-builder /app/backend/target/x86_64-unknown-linux-musl/release/npc-ui-backend /app/backend
 
 # Copy frontend build to static files directory
 COPY --from=frontend-builder /app/frontend/dist /app/frontend/static
 
 # Make binary executable and set ownership
-RUN chmod +x /app/backend/npc-ui-backend && \
+RUN chmod +x /app/backend && \
     chown -R appuser:appgroup /app
 
 USER appuser
@@ -71,4 +71,4 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
   CMD wget --no-verbose --tries=1 --spider http://localhost:3000/health || exit 1
 
 # Run backend
-CMD ["/app/backend/npc-ui-backend"]
+CMD ["/app/backend"]
