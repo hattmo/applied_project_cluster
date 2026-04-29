@@ -16,23 +16,31 @@ RUN npm run build
 # =============================================================================
 # Stage 2: Build Backend (Rust)
 # =============================================================================
-FROM rust:latest AS backend-builder
+FROM rust:1.85-alpine AS backend-builder
+
+# Install musl for static linking
+RUN apk add --no-cache musl-dev
 
 WORKDIR /app/backend
 
 COPY backend/Cargo.toml ./
 COPY backend/src/ ./src/
 
-# Build release binary
-RUN cargo build --release
+# Configure for static musl build
+RUN mkdir -p ~/.cargo && \
+    echo '[target.x86_64-unknown-linux-musl]' > ~/.cargo/config.toml && \
+    echo 'linker = "musl-gcc"' >> ~/.cargo/config.toml
+
+# Build release binary with musl target
+RUN cargo build --release --target x86_64-unknown-linux-musl
 
 # =============================================================================
 # Stage 3: Runtime Image
 # =============================================================================
 FROM alpine:3.19
 
-# Install runtime dependencies
-RUN apk add --no-cache ca-certificates libgcc
+# Install runtime dependencies (musl is required for dynamically linked Rust binaries)
+RUN apk add --no-cache ca-certificates libgcc musl
 
 # Create non-root user
 RUN addgroup -g 1000 appgroup && \
@@ -40,14 +48,18 @@ RUN addgroup -g 1000 appgroup && \
 
 WORKDIR /app
 
-# Copy backend binary
-COPY --from=backend-builder /app/backend/target/release/npc-ui-backend /app/backend
+# Create directories
+RUN mkdir -p /app/backend /app/frontend/static
+
+# Copy backend binary (from musl target directory)
+COPY --from=backend-builder /app/backend/target/x86_64-unknown-linux-musl/release/npc-ui-backend /app/backend/npc-ui-backend
 
 # Copy frontend build to static files directory
 COPY --from=frontend-builder /app/frontend/dist /app/frontend/static
 
-# Set ownership
-RUN chown -R appuser:appgroup /app
+# Make binary executable and set ownership
+RUN chmod +x /app/backend/npc-ui-backend && \
+    chown -R appuser:appgroup /app
 
 USER appuser
 
@@ -59,4 +71,4 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
   CMD wget --no-verbose --tries=1 --spider http://localhost:3000/health || exit 1
 
 # Run backend
-CMD ["/app/backend"]
+CMD ["/app/backend/npc-ui-backend"]
