@@ -43,7 +43,7 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: vmware-gateway-service
+  name: vmware-gateway
   namespace: npc
 spec:
   type: ClusterIP
@@ -275,7 +275,7 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: controller-service
+  name: controller
   namespace: npc
 spec:
   type: LoadBalancer
