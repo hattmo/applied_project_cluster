@@ -54,17 +54,15 @@ spec:
     targetPort: 8080
 ---
 apiVersion: apps/v1
-kind: Deployment
+kind: StatefulSet
 metadata:
   name: agent
   namespace: npc
   labels:
     app: agent
 spec:
+  serviceName: agent
   replicas: 1
-  strategy:
-    type: Recreate
-  progressDeadlineSeconds: 600
   selector:
     matchLabels:
       app: agent
@@ -186,25 +184,20 @@ spec:
             memory: "2Gi"
             cpu: "1000m"
       volumes:
-      - name: ollama-storage
-        persistentVolumeClaim:
-          claimName: ollama-pvc
       - name: ssh-secret
         secret:
           secretName: ollama-ssh-keys
           defaultMode: 0600
 ---
 apiVersion: v1
-kind: PersistentVolumeClaim
+kind: Service
 metadata:
-  name: ollama-pvc
+  name: agent
   namespace: npc
 spec:
-  accessModes:
-    - ReadWriteOnce
-  resources:
-    requests:
-      storage: 20Gi
+  clusterIP: None
+  selector:
+    app: agent
 ---
 apiVersion: apps/v1
 kind: Deployment
