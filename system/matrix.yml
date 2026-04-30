@@ -1,0 +1,86 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: matrix-server
+  namespace: npc
+  labels:
+    app: matrix-server
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: matrix-server
+  template:
+    metadata:
+      labels:
+        app: matrix-server
+    spec:
+      initContainers:
+      - name: setup-synapse
+        image: matrixdotorg/synapse:latest
+        volumeMounts:
+        - name: matrix-data
+          mountPath: /data
+        env:
+        - name: "SYNAPSE_SERVER_NAME"
+          value: "matrix-server.npc.svc.cluster.local"
+        - name: "SYNAPSE_REPORT_STATS"
+          value: "no"
+        args:
+        - "generate"
+      containers:
+      - name: synapse
+        image: matrixdotorg/synapse:latest
+        ports:
+        - containerPort: 8008
+        livenessProbe:
+          httpGet:
+            path: /_matrix/client/versions
+            port: 8008
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /_matrix/client/versions
+            port: 8008
+          initialDelaySeconds: 10
+          periodSeconds: 5
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "2Gi"
+            cpu: "1000m"
+        volumeMounts:
+        - name: matrix-data
+          mountPath: /data
+      volumes:
+      - name: matrix-data
+        persistentVolumeClaim:
+          claimName: matrix-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: matrix-server
+  namespace: npc
+spec:
+  type: ClusterIP
+  selector:
+    app: matrix-server
+  ports:
+  - port: 80
+    targetPort: 8008
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: matrix-pvc
+  namespace: npc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi

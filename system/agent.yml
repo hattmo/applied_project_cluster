@@ -1,0 +1,143 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: agent
+  namespace: npc
+  labels:
+    app: agent
+spec:
+  serviceName: agent
+  replicas: 1
+  selector:
+    matchLabels:
+      app: agent
+  template:
+    metadata:
+      labels:
+        app: agent
+    spec:
+      securityContext:
+        fsGroup: 1000
+      initContainers:
+      - name: init-ssh-keys
+        image: busybox:latest
+        command:
+        - sh
+        - -c
+        - |
+          if [ ! -f /root/.ollama/id_ed25519 ] || [ ! -f /root/.ollama/id_ed25519.pub ]; then
+            echo "SSH keys not found, copying from secret..."
+            mkdir -p /root/.ollama
+            cp /ssh-secret/id_ed25519 /root/.ollama/id_ed25519
+            cp /ssh-secret/id_ed25519.pub /root/.ollama/id_ed25519.pub
+            chmod 600 /root/.ollama/id_ed25519
+            chmod 644 /root/.ollama/id_ed25519.pub
+            echo "SSH keys installed"
+          else
+            echo "SSH keys already exist, skipping"
+          fi
+        volumeMounts:
+        - name: ollama-storage
+          mountPath: /root/.ollama
+        - name: ssh-secret
+          mountPath: /ssh-secret
+          readOnly: true
+      containers:
+      - name: ollama
+        image: ollama/ollama:latest
+        env:
+        - name: OLLAMA_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: ollama-creds
+              key: api-key
+        - name: OLLAMA_MODEL
+          value: "qwen:3.5"
+        ports:
+        - containerPort: 11434
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 11434
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 11434
+          initialDelaySeconds: 10
+          periodSeconds: 5
+        resources:
+          requests:
+            memory: "2Gi"
+            cpu: "1000m"
+          limits:
+            memory: "8Gi"
+            cpu: "4000m"
+        volumeMounts:
+        - name: ollama-storage
+          mountPath: /root/.ollama
+      - name: openclaw
+        image: hattmo/openclaw:latest
+        env:
+        - name: HOME
+          value: /home/node
+        - name: TZ
+          value: UTC
+        - name: MATRIX_URL
+          valueFrom:
+            secretKeyRef:
+              name: agent-matrix-creds
+              key: url
+        - name: MATRIX_USER
+          valueFrom:
+            secretKeyRef:
+              name: agent-matrix-creds
+              key: user
+        - name: MATRIX_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: agent-matrix-creds
+              key: password
+        - name: MATRIX_DEVICE
+          valueFrom:
+            secretKeyRef:
+              name: agent-matrix-creds
+              key: device
+        ports:
+        - containerPort: 18789
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 18789
+          initialDelaySeconds: 120
+          periodSeconds: 60
+          timeoutSeconds: 20
+        readinessProbe:
+          httpGet:
+            path: /readyz
+            port: 18789
+          initialDelaySeconds: 120
+          periodSeconds: 60
+          timeoutSeconds: 20
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "2Gi"
+            cpu: "1000m"
+      volumes:
+      - name: ssh-secret
+        secret:
+          secretName: ollama-ssh-keys
+          defaultMode: 0600
+  volumeClaimTemplates:
+  - metadata:
+      name: ollama-storage
+    spec:
+      accessModes:
+        - ReadWriteOnce
+      resources:
+        requests:
+          storage: 20Gi

@@ -1,0 +1,76 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: controller
+  namespace: npc
+  labels:
+    app: controller
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: controller
+  template:
+    metadata:
+      labels:
+        app: controller
+    spec:
+      containers:
+      - name: controller
+        image: hattmo/controller:latest
+        ports:
+        - containerPort: 8080
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        env:
+        - name: MATRIX_URL
+          valueFrom:
+            secretKeyRef:
+              name: ui-matrix-creds
+              key: url
+        - name: MATRIX_USER
+          valueFrom:
+            secretKeyRef:
+              name: ui-matrix-creds
+              key: user
+        - name: MATRIX_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: ui-matrix-creds
+              key: password
+        - name: MATRIX_ROOM_ID
+          valueFrom:
+            secretKeyRef:
+              name: ui-matrix-creds
+              key: room
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: controller
+  namespace: npc
+spec:
+  type: LoadBalancer
+  selector:
+    app: controller
+  ports:
+  - port: 80
+    targetPort: 8080
+    protocol: TCP
