@@ -123,8 +123,11 @@ async fn main() -> anyhow::Result<()> {
     let password: &str = std::env::var("MATRIX_PASSWORD")?.leak();
     let room_id: &str = std::env::var("MATRIX_ROOM_ID")?.leak();
 
+    let owned_room_id = RoomOrAliasId::parse(room_id)?;
+    let owned_server_name = ServerName::parse(home_server)?;
+
     let client = Client::builder()
-        .homeserver_url(&home_server)
+        .server_name(&owned_server_name)
         .build()
         .await?;
     let response = client
@@ -139,13 +142,12 @@ async fn main() -> anyhow::Result<()> {
     };
 
     let token = CancellationToken::new();
-    let owned_room_id = RoomOrAliasId::parse(room_id)?;
-    let owned_server_id = ServerName::parse(home_server)?;
+
     let background_job = tokio::spawn(sync_matrix_room(
         token.clone(),
         client.clone(),
         owned_room_id,
-        owned_server_id,
+        owned_server_name,
         matrix_state.clone(),
     ));
 
