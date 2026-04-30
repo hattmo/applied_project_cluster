@@ -1,3 +1,33 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: matrix-server
+  namespace: npc
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: matrix-secret-manager
+  namespace: npc
+rules:
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["create", "get", "update", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: matrix-server-secret-manager
+  namespace: npc
+subjects:
+- kind: ServiceAccount
+  name: matrix-server
+  namespace: npc
+roleRef:
+  kind: Role
+  name: matrix-secret-manager
+  apiGroup: rbac.authorization.k8s.io
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -15,6 +45,7 @@ spec:
       labels:
         app: matrix-server
     spec:
+      serviceAccountName: matrix-server
       initContainers:
       - name: setup-synapse
         image: matrixdotorg/synapse:latest
@@ -28,6 +59,31 @@ spec:
           value: "no"
         args:
         - "generate"
+      - name: create-shared-secret
+        image: bitnami/kubectl:latest
+        volumeMounts:
+        - name: matrix-data
+          mountPath: /data
+        command:
+        - "/bin/sh"
+        - "-c"
+        - |
+          if [ ! -f /data/homeserver.yaml ]; then
+            echo "ERROR: homeserver.yaml not found, synapse init failed"
+            exit 1
+          fi
+          echo "Extracting shared_secret from config..."
+          SHARED_SECRET=$(grep -E "^registration_shared_secret:" /data/homeserver.yaml | awk '{print $2}')
+          if [ -n "$SHARED_SECRET" ]; then
+            echo "Creating/updating Kubernetes secret with shared_secret..."
+            kubectl create secret generic matrix-shared-secret \
+              --from-literal=shared_secret="$SHARED_SECRET" \
+              --dry-run=client -o yaml | kubectl apply -f -
+            echo "Secret created/updated successfully"
+          else
+            echo "ERROR: Could not find registration_shared_secret in config"
+            exit 1
+          fi
       containers:
       - name: synapse
         image: matrixdotorg/synapse:latest
