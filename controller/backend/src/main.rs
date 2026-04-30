@@ -128,15 +128,12 @@ async fn main() -> anyhow::Result<()> {
         .init();
 
     // Load Matrix credentials from environment
-    let home_server: &str = std::env::var("MATRIX_URL")?.leak();
     let user_id: &str = std::env::var("MATRIX_USER")?.leak();
     let password: &str = std::env::var("MATRIX_PASSWORD")?.leak();
-    let room_id: &str = std::env::var("MATRIX_ROOM_ID")?.leak();
-    let vmware_gateway_url = std::env::var("VMWARE_GATEWAY_URL")
-        .unwrap_or_else(|_| "http://vmware-gateway.npc.svc.cluster.local".to_string());
+    let vmware_gateway_url = "vmware-gateway.npc.svc.cluster.local";
 
-    let owned_room_id = RoomOrAliasId::parse(room_id)?;
-    let owned_server_name = ServerName::parse(home_server)?;
+    let owned_room_id = RoomOrAliasId::parse("#agent_room:matrix.npc.svc.cluster.local")?;
+    let owned_server_name = ServerName::parse("matrix.npc.svc.cluster.local")?;
 
     let client = Client::builder()
         .server_name(&owned_server_name)
@@ -288,26 +285,22 @@ async fn list_agents(State(state): State<AppState>) -> Json<Box<[MatrixUser]>> {
 // VMware VM handlers
 async fn list_vms(State(state): State<AppState>) -> Result<Json<Vec<String>>, StatusCode> {
     let url = format!("{}/api/vms", state.vmware_gateway_url);
-    
-    let response = state.http_client
-        .get(&url)
-        .send()
-        .await
-        .map_err(|e| {
-            tracing::error!("Failed to fetch VMs from vmware_gateway: {}", e);
-            StatusCode::BAD_GATEWAY
-        })?;
-    
+
+    let response = state.http_client.get(&url).send().await.map_err(|e| {
+        tracing::error!("Failed to fetch VMs from vmware_gateway: {}", e);
+        StatusCode::BAD_GATEWAY
+    })?;
+
     if !response.status().is_success() {
         tracing::error!("vmware_gateway returned status: {}", response.status());
         return Err(StatusCode::BAD_GATEWAY);
     }
-    
+
     let vm_list: VmwareVmList = response.json().await.map_err(|e| {
         tracing::error!("Failed to parse vmware_gateway response: {}", e);
         StatusCode::BAD_GATEWAY
     })?;
-    
+
     Ok(Json(vm_list.vms))
 }
 

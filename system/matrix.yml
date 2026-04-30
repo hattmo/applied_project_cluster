@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: matrix-server
+  name: matrix
   namespace: npc
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -17,11 +17,11 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
-  name: matrix-server-secret-manager
+  name: matrix-binding
   namespace: npc
 subjects:
 - kind: ServiceAccount
-  name: matrix-server
+  name: matrix
   namespace: npc
 roleRef:
   kind: Role
@@ -31,21 +31,21 @@ roleRef:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: matrix-server
+  name: matrix
   namespace: npc
   labels:
-    app: matrix-server
+    app: matrix
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: matrix-server
+      app: matrix
   template:
     metadata:
       labels:
-        app: matrix-server
+        app: matrix
     spec:
-      serviceAccountName: matrix-server
+      serviceAccountName: matrix
       initContainers:
       - name: setup-synapse
         image: matrixdotorg/synapse:latest
@@ -54,7 +54,7 @@ spec:
           mountPath: /data
         env:
         - name: "SYNAPSE_SERVER_NAME"
-          value: "matrix-server.npc.svc.cluster.local"
+          value: "matrix.npc.svc.cluster.local"
         - name: "SYNAPSE_REPORT_STATS"
           value: "no"
         args:
@@ -119,12 +119,12 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: matrix-server
+  name: matrix
   namespace: npc
 spec:
   type: ClusterIP
   selector:
-    app: matrix-server
+    app: matrix
   ports:
   - port: 80
     targetPort: 8008

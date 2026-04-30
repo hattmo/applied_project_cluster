@@ -40,26 +40,20 @@ spec:
             memory: "512Mi"
             cpu: "500m"
         env:
-        - name: MATRIX_URL
-          valueFrom:
-            secretKeyRef:
-              name: ui-matrix-creds
-              key: url
+        # - name: MATRIX_URL
+        #   value: matrix.npc.svc.cluster.local
+        # - name: VMWARE_GATEWAY_URL
+        #   value: vmware-gateway.npc.svc.cluster.local
         - name: MATRIX_USER
           valueFrom:
             secretKeyRef:
-              name: ui-matrix-creds
+              name: controller-matrix-creds
               key: user
         - name: MATRIX_PASSWORD
           valueFrom:
             secretKeyRef:
-              name: ui-matrix-creds
+              name: controller-matrix-creds
               key: password
-        - name: MATRIX_ROOM_ID
-          valueFrom:
-            secretKeyRef:
-              name: ui-matrix-creds
-              key: room
 ---
 apiVersion: v1
 kind: Service

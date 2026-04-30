@@ -84,11 +84,8 @@ spec:
           value: /home/node
         - name: TZ
           value: UTC
-        - name: MATRIX_URL
-          valueFrom:
-            secretKeyRef:
-              name: agent-matrix-creds
-              key: url
+        # - name: MATRIX_URL
+        #   value: matrix.npc.svc.cluster.local
         - name: MATRIX_USER
           valueFrom:
             secretKeyRef:
@@ -99,11 +96,11 @@ spec:
             secretKeyRef:
               name: agent-matrix-creds
               key: password
-        - name: MATRIX_DEVICE
-          valueFrom:
-            secretKeyRef:
-              name: agent-matrix-creds
-              key: device
+        # - name: MATRIX_DEVICE
+        #   valueFrom:
+        #     secretKeyRef:
+        #       name: agent-matrix-creds
+        #       key: device
         ports:
         - containerPort: 18789
         livenessProbe:
