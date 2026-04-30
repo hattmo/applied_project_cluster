@@ -30,13 +30,13 @@ spec:
         livenessProbe:
           httpGet:
             path: /
-            port: 8888
+            port: 80
           initialDelaySeconds: 10
           periodSeconds: 10
         readinessProbe:
           httpGet:
             path: /
-            port: 8888
+            port: 80
           initialDelaySeconds: 5
           periodSeconds: 5
 ---
@@ -50,8 +50,8 @@ spec:
   selector:
     app: vmware
   ports:
-  - port: 8888
-    targetPort: 8888
+  - port: 80
+    targetPort: 80
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -281,5 +281,5 @@ spec:
     app: npc-ui
   ports:
   - port: 80
-    targetPort: 3000
+    targetPort: 80
     protocol: TCP
