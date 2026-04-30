@@ -232,6 +232,7 @@ async fn sync_matrix_room(
                 display_name: m.display_name().map(ToOwned::to_owned),
             })
             .collect();
+        tracing::info!(?members, "Updated members");
 
         // Update shared state
         let mut stored_members = matrix_state.room_members.write().await;
