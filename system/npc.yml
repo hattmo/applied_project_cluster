@@ -4,14 +4,13 @@ metadata:
   name: npc
 ---
 apiVersion: apps/v1
-kind: StatefulSet
+kind: Deployment
 metadata:
   name: matrix-server
   namespace: npc
   labels:
     app: matrix-server
 spec:
-  serviceName: matrix-server
   replicas: 1
   selector:
     matchLabels:
@@ -59,16 +58,8 @@ spec:
           mountPath: /var/lib/conduit
       volumes:
       - name: matrix-data
-        emptyDir: {}
-  volumeClaimTemplates:
-  - metadata:
-      name: matrix-data
-    spec:
-      accessModes:
-        - ReadWriteOnce
-      resources:
-        requests:
-          storage: 10Gi
+        persistentVolumeClaim:
+          claimName: matrix-pvc
 ---
 apiVersion: v1
 kind: Service
@@ -351,6 +342,18 @@ spec:
               name: ui-matrix-creds
               key: room
 
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: matrix-pvc
+  namespace: npc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
 ---
 apiVersion: v1
 kind: Service
