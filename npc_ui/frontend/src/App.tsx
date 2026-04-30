@@ -52,6 +52,10 @@ function App() {
   const [newVmName, setNewVmName] = useState('')
   const [newVmUserId, setNewVmUserId] = useState('')
   const [editingVm, setEditingVm] = useState<VmConfig | null>(null)
+  
+  // Available VMs from vmware_gateway
+  const [availableVms, setAvailableVms] = useState<string[]>([])
+  const [availableVmsLoading, setAvailableVmsLoading] = useState(true)
 
   // Task Queues state
   const [taskQueues, setTaskQueues] = useState<TaskQueue[]>([])
@@ -66,6 +70,7 @@ function App() {
   useEffect(() => {
     fetchMatrixStatus()
     fetchAgents()
+    fetchAvailableVms()
   }, [])
 
   // Load VM Configs
@@ -105,6 +110,19 @@ function App() {
     } catch (err) {
       setAgentsError(err instanceof Error ? err.message : 'Unknown error')
       setAgentsLoading(false)
+    }
+  }
+
+  async function fetchAvailableVms() {
+    try {
+      const res = await fetch(`${API_BASE}/vms`)
+      if (!res.ok) throw new Error('Failed to fetch available VMs')
+      const data = await res.json()
+      setAvailableVms(data)
+      setAvailableVmsLoading(false)
+    } catch (err) {
+      console.error('Failed to fetch available VMs:', err)
+      setAvailableVmsLoading(false)
     }
   }
 
@@ -286,13 +304,22 @@ function App() {
 
           {showVmForm && (
             <div className="form">
-              <input
-                type="text"
-                placeholder="VM Name"
+              <select
                 value={newVmName}
                 onChange={(e) => setNewVmName(e.target.value)}
                 className="input"
-              />
+              >
+                <option value="">Select VM</option>
+                {availableVmsLoading ? (
+                  <option disabled>Loading VMs...</option>
+                ) : availableVms.length === 0 ? (
+                  <option disabled>No VMs available</option>
+                ) : (
+                  availableVms.map((vm) => (
+                    <option key={vm} value={vm}>{vm}</option>
+                  ))
+                )}
+              </select>
               <select
                 value={newVmUserId}
                 onChange={(e) => setNewVmUserId(e.target.value)}
@@ -329,12 +356,15 @@ function App() {
                 <div key={vm.id} className="list-item">
                   {editingVm?.id === vm.id ? (
                     <div className="edit-form">
-                      <input
-                        type="text"
+                      <select
                         defaultValue={vm.name}
                         onBlur={(e) => updateVmConfig(vm.id, { name: e.target.value })}
                         className="input"
-                      />
+                      >
+                        {availableVms.map((availVm) => (
+                          <option key={availVm} value={availVm}>{availVm}</option>
+                        ))}
+                      </select>
                       <select
                         defaultValue={vm.user_id}
                         onBlur={(e) => updateVmConfig(vm.id, { user_id: e.target.value })}
