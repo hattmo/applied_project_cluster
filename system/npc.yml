@@ -20,6 +20,19 @@ spec:
       labels:
         app: matrix-server
     spec:
+      init-containers:
+      - name: setup-synapse
+        image: matrixdotorg/synapse:latest
+        volumeMounts:
+        - name: matrix-data
+          mountPath: /data
+        env:
+        - name: "SYNAPSE_SERVER_NAME"
+          value: "matrix-server.npc.svc.cluster.local"
+        - name: "SYNAPSE_REPORT_STATS"
+          value: "matrix-server.npc.svc.cluster.local"
+        command:
+        - "generate"
       containers:
       - name: synapse
         image: matrixdotorg/synapse:latest
