@@ -133,7 +133,7 @@ async fn main() -> anyhow::Result<()> {
     let password: &str = std::env::var("MATRIX_PASSWORD")?.leak();
     let room_id: &str = std::env::var("MATRIX_ROOM_ID")?.leak();
     let vmware_gateway_url = std::env::var("VMWARE_GATEWAY_URL")
-        .unwrap_or_else(|_| "http://vmware-gateway-service.npc.svc.cluster.local:8888".to_string());
+        .unwrap_or_else(|_| "http://vmware-gateway-service.npc.svc.cluster.local".to_string());
 
     let owned_room_id = RoomOrAliasId::parse(room_id)?;
     let owned_server_name = ServerName::parse(home_server)?;
