@@ -21,19 +21,10 @@ spec:
         app: matrix-server
     spec:
       containers:
-      - name: conduit
-        image: matrixorg/conduit:latest
+      - name: synapse
+        image: matrixdotorg/synapse:latest
         ports:
         - containerPort: 8008
-        env:
-        - name: CONDUIT_SERVER_NAME
-          value: "matrix.npc.svc.cluster.local"
-        - name: CONDUIT_ALLOW_REGISTRATION
-          value: "true"
-        - name: CONDUIT_ALLOW_FEDERATION
-          value: "false"
-        - name: CONDUIT_TRUSTED_SERVERS
-          value: '["matrix.npc.svc.cluster.local"]'
         livenessProbe:
           httpGet:
             path: /_matrix/client/versions
@@ -93,7 +84,6 @@ spec:
     spec:
       containers:
       - name: app
-        # flux: get image policy vmware-gateway
         image: hattmo/vmware-gateway:latest
         envFrom:
         - secretRef:
@@ -204,7 +194,6 @@ spec:
         - name: ollama-storage
           mountPath: /root/.ollama
       - name: openclaw
-        # flux: get image policy openclaw
         image: hattmo/openclaw:latest
         env:
         - name: HOME
