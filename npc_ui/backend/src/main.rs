@@ -6,12 +6,8 @@ use axum::{
     routing::{delete, get, post, put},
 };
 use matrix_sdk::{
-    Client, RoomMemberships,
-    config::SyncSettings,
-    ruma::{
-        OwnedRoomId, RoomId,
-        events::{SyncStateEvent, room::member::SyncRoomMemberEvent},
-    },
+    Client, OwnedServerName, RoomMemberships, ServerName,
+    ruma::{OwnedRoomOrAliasId, RoomOrAliasId},
 };
 use serde::{Deserialize, Serialize};
 use std::{sync::Arc, time::Duration};
@@ -143,10 +139,13 @@ async fn main() -> anyhow::Result<()> {
     };
 
     let token = CancellationToken::new();
+    let owned_room_id = RoomOrAliasId::parse(room_id)?;
+    let owned_server_id = ServerName::parse(home_server)?;
     let background_job = tokio::spawn(sync_matrix_room(
         token.clone(),
         client.clone(),
-        OwnedRoomId::try_from(room_id.to_string()).map_err(|e| anyhow::anyhow!(e))?,
+        owned_room_id,
+        owned_server_id,
         matrix_state.clone(),
     ));
 
@@ -207,13 +206,14 @@ async fn main() -> anyhow::Result<()> {
 async fn sync_matrix_room(
     token: CancellationToken,
     client: Client,
-    room_id: OwnedRoomId,
+    room_id: OwnedRoomOrAliasId,
+    server_id: OwnedServerName,
     matrix_state: MatrixState,
 ) -> anyhow::Result<()> {
     let _drop = token.drop_guard_ref();
     let room = client
-        .get_room(&room_id)
-        .ok_or(anyhow::anyhow!("Room Not Found"))?;
+        .join_room_by_id_or_alias(&room_id, &[server_id])
+        .await?;
     tracing::info!("Joined room: {}", room_id);
 
     loop {
