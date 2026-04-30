@@ -42,7 +42,6 @@ function App() {
   const [agents, setAgents] = useState<MatrixUser[]>([])
   const [agentsLoading, setAgentsLoading] = useState(true)
   const [agentsError, setAgentsError] = useState<string | null>(null)
-  const [matrixStatus, setMatrixStatus] = useState<{connected: boolean, room_id: string | null, members: number} | null>(null)
   
   // VM Configs state
   const [vmConfigs, setVmConfigs] = useState<VmConfig[]>([])
@@ -71,9 +70,8 @@ function App() {
   const [newTaskKeystrokes, setNewTaskKeystrokes] = useState('')
   const [newTaskDelay, setNewTaskDelay] = useState('')
 
-  // Load Matrix status and agents
+  // Load agents and available VMs
   useEffect(() => {
-    fetchMatrixStatus()
     fetchAgents()
     fetchAvailableVms()
   }, [])
@@ -89,21 +87,6 @@ function App() {
       fetchTaskQueues()
     }
   }, [activeTab])
-
-  async function fetchMatrixStatus() {
-    try {
-      const res = await fetch(`${API_BASE}/status`)
-      if (!res.ok) throw new Error('Failed to fetch status')
-      const data = await res.json()
-      setMatrixStatus({
-        connected: true,
-        room_id: data.room_id,
-        members: agents.length,
-      })
-    } catch (err) {
-      console.error('Failed to fetch Matrix status:', err)
-    }
-  }
 
   async function fetchAgents() {
     try {
@@ -314,23 +297,6 @@ function App() {
   return (
     <div className="container">
       <h1>🖥️ NPC VM Operator</h1>
-      
-      {/* Matrix Status Bar */}
-      {matrixStatus && (
-        <div className={`status-bar ${matrixStatus.connected ? 'connected' : 'disconnected'}`}>
-          <span className="status-indicator">
-            {matrixStatus.connected ? '🟢' : '🔴'} Matrix
-          </span>
-          {matrixStatus.connected && matrixStatus.room_id && (
-            <span className="status-detail">
-              Room: {matrixStatus.room_id} • {matrixStatus.members} agents
-            </span>
-          )}
-          {!matrixStatus.connected && (
-            <span className="status-detail">Not connected to Matrix</span>
-          )}
-        </div>
-      )}
       
       <div className="tabs">
         <button 
