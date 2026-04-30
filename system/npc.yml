@@ -188,6 +188,15 @@ spec:
         secret:
           secretName: ollama-ssh-keys
           defaultMode: 0600
+  volumeClaimTemplates:
+  - metadata:
+      name: ollama-storage
+    spec:
+      accessModes:
+        - ReadWriteOnce
+      resources:
+        requests:
+          storage: 20Gi
 ---
 apiVersion: v1
 kind: Service
