@@ -46,7 +46,7 @@ spec:
             cpu: "1000m"
         volumeMounts:
         - name: matrix-data
-          mountPath: /var/lib/conduit
+          mountPath: /data
       volumes:
       - name: matrix-data
         persistentVolumeClaim:
