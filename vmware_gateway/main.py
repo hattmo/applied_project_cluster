@@ -524,6 +524,52 @@ def get_screen(vm: str):
     )
 
 
+@app.route("/api/vms")
+def list_vms():
+    """List all VMs in vSphere that pass the whitelist regex."""
+    host = os.environ.get("VC_HOST")
+    un = os.environ.get("VC_USER")
+    pw = os.environ.get("VC_PASS")
+    if not host or not un or not pw:
+        return "VMware credentials not configured", 500
+    
+    try:
+        port = int(os.environ.get("VC_PORT", "443"))
+    except ValueError:
+        return "Invalid VC_PORT", 500
+    
+    ctx = ssl.create_default_context()
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE
+    
+    try:
+        connection = SmartConnect(
+            host=host,
+            user=un,
+            pwd=pw,
+            port=port,
+            sslContext=ctx,
+        )
+        atexit.register(Disconnect, connection)
+        content = connection.RetrieveContent()
+        
+        if content.viewManager:
+            container = content.viewManager.CreateContainerView(
+                content.rootFolder, [vim.VirtualMachine], True
+            )
+        else:
+            return "Cannot create view", 500
+        
+        vms = container.view
+        # Filter VMs that match the whitelist regex
+        valid_vms = [vm.name for vm in vms if vm_white_list.match(vm.name)]
+        # container.Destroy()
+        
+        return {"vms": valid_vms, "count": len(valid_vms), "pattern": vm_white_list.pattern}
+    except Exception as e:
+        return {"error": str(e)}, 500
+
+
 @app.route("/")
 def root():
     return "OK"
