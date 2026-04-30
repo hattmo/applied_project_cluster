@@ -9,6 +9,7 @@ use matrix_sdk::{
     Client, OwnedServerName, RoomMemberships, ServerName,
     ruma::{OwnedRoomOrAliasId, RoomOrAliasId},
 };
+use reqwest::Client as HttpClient;
 use serde::{Deserialize, Serialize};
 use std::{sync::Arc, time::Duration};
 use tokio::{sync::RwLock, time::sleep};
@@ -22,9 +23,11 @@ struct AppState {
     home_server: &'static str,
     room_id: &'static str,
     user_id: &'static str,
+    vmware_gateway_url: String,
     vm_configs: Arc<RwLock<Vec<VmConfig>>>,
     task_queues: Arc<RwLock<Vec<TaskQueue>>>,
     client: Client,
+    http_client: HttpClient,
     matrix_state: MatrixState,
 }
 
@@ -62,6 +65,13 @@ struct CreateVmConfig {
     name: String,
     user_id: String,
     enabled: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct VmwareVmList {
+    vms: Vec<String>,
+    count: usize,
+    pattern: String,
 }
 
 #[derive(Deserialize)]
@@ -122,6 +132,8 @@ async fn main() -> anyhow::Result<()> {
     let user_id: &str = std::env::var("MATRIX_USER")?.leak();
     let password: &str = std::env::var("MATRIX_PASSWORD")?.leak();
     let room_id: &str = std::env::var("MATRIX_ROOM_ID")?.leak();
+    let vmware_gateway_url = std::env::var("VMWARE_GATEWAY_URL")
+        .unwrap_or_else(|_| "http://vmware-gateway-service.npc.svc.cluster.local:8888".to_string());
 
     let owned_room_id = RoomOrAliasId::parse(room_id)?;
     let owned_server_name = ServerName::parse(home_server)?;
@@ -151,19 +163,26 @@ async fn main() -> anyhow::Result<()> {
         matrix_state.clone(),
     ));
 
+    let http_client = HttpClient::builder()
+        .timeout(Duration::from_secs(10))
+        .build()?;
+
     let state = AppState {
         version: env!("CARGO_PKG_VERSION"),
         home_server,
         user_id,
         room_id,
+        vmware_gateway_url,
         vm_configs: Arc::new(RwLock::new(Vec::new())),
         task_queues: Arc::new(RwLock::new(Vec::new())),
         client,
+        http_client,
         matrix_state,
     };
 
     let app = Router::new()
         .route("/api/v1/agents", get(list_agents))
+        .route("/api/v1/vms", get(list_vms))
         .route("/api/v1/vm-configs", get(list_vm_configs))
         .route("/api/v1/vm-configs", post(create_vm_config))
         .route("/api/v1/vm-configs/:id", get(get_vm_config))
@@ -264,6 +283,32 @@ async fn status_handler(State(state): State<AppState>) -> Json<HealthResponse> {
 async fn list_agents(State(state): State<AppState>) -> Json<Box<[MatrixUser]>> {
     let members = state.matrix_state.room_members.read().await;
     Json(members.clone())
+}
+
+// VMware VM handlers
+async fn list_vms(State(state): State<AppState>) -> Result<Json<Vec<String>>, StatusCode> {
+    let url = format!("{}/api/vms", state.vmware_gateway_url);
+    
+    let response = state.http_client
+        .get(&url)
+        .send()
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to fetch VMs from vmware_gateway: {}", e);
+            StatusCode::BAD_GATEWAY
+        })?;
+    
+    if !response.status().is_success() {
+        tracing::error!("vmware_gateway returned status: {}", response.status());
+        return Err(StatusCode::BAD_GATEWAY);
+    }
+    
+    let vm_list: VmwareVmList = response.json().await.map_err(|e| {
+        tracing::error!("Failed to parse vmware_gateway response: {}", e);
+        StatusCode::BAD_GATEWAY
+    })?;
+    
+    Ok(Json(vm_list.vms))
 }
 
 // VM Config handlers
