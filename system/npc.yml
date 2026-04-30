@@ -20,7 +20,7 @@ spec:
       labels:
         app: matrix-server
     spec:
-      init-containers:
+      initContainers:
       - name: setup-synapse
         image: matrixdotorg/synapse:latest
         volumeMounts:
