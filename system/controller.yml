@@ -40,25 +40,36 @@ spec:
             memory: "512Mi"
             cpu: "500m"
         env:
-        # - name: MATRIX_URL
-        #   value: matrix.npc.svc.cluster.local
-        # - name: VMWARE_GATEWAY_URL
-        #   value: vmware-gateway.npc.svc.cluster.local
+        - name: MATRIX_URL
+          value: "http://matrix-server.npc.svc.cluster.local"
+        - name: VMWARE_GATEWAY_URL
+          value: "http://vmware-gateway.npc.svc.cluster.local"
         - name: MATRIX_SECRET
           valueFrom:
             secretKeyRef:
               name: matrix-shared-secret
               key: shared_secret
-        # - name: MATRIX_USER
-        #   valueFrom:
-        #     secretKeyRef:
-        #       name: controller-matrix-creds
-        #       key: user
-        # - name: MATRIX_PASSWORD
-        #   valueFrom:
-        #     secretKeyRef:
-        #       name: controller-matrix-creds
-        #       key: password
+        - name: MATRIX_DATA_PATH
+          value: "/app/matrix-data"
+        volumeMounts:
+        - name: matrix-data
+          mountPath: /app/matrix-data
+      volumes:
+      - name: matrix-data
+        persistentVolumeClaim:
+          claimName: controller-matrix-pvc
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: controller-matrix-pvc
+  namespace: npc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 100Mi
 ---
 apiVersion: v1
 kind: Service
