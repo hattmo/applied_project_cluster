@@ -250,7 +250,7 @@ async fn main() -> anyhow::Result<()> {
 
     // Load environment variables
     let matrix_url = std::env::var("MATRIX_URL")
-        .unwrap_or_else(|_| "http://matrix-server.npc.svc.cluster.local".to_string());
+        .unwrap_or_else(|_| "http://matrix.npc.svc.cluster.local".to_string());
     let matrix_secret = std::env::var("MATRIX_SECRET")?;
     let matrix_data_path = std::env::var("MATRIX_DATA_PATH")
         .unwrap_or_else(|_| "/app/matrix-data".to_string());
