@@ -65,6 +65,11 @@ function App() {
   const [newQueueName, setNewQueueName] = useState('')
   const [newQueueVmId, setNewQueueVmId] = useState('')
   const [editingQueue, setEditingQueue] = useState<TaskQueue | null>(null)
+  
+  // New task state
+  const [newTaskDescription, setNewTaskDescription] = useState('')
+  const [newTaskKeystrokes, setNewTaskKeystrokes] = useState('')
+  const [newTaskDelay, setNewTaskDelay] = useState('')
 
   // Load Matrix status and agents
   useEffect(() => {
@@ -243,7 +248,57 @@ function App() {
     }
   }
 
+  async function addTaskToQueue(queueId: string) {
+    if (!newTaskDescription.trim()) return
+    try {
+      const queue = taskQueues.find(q => q.id === queueId)
+      if (!queue) throw new Error('Queue not found')
+      
+      const newTask = {
+        description: newTaskDescription,
+        keystrokes: newTaskKeystrokes || undefined,
+        delay_ms: newTaskDelay ? parseInt(newTaskDelay) : undefined,
+      }
+      
+      const res = await fetch(`${API_BASE}/task-queues/${queueId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...queue,
+          tasks: [...queue.tasks, newTask],
+        }),
+      })
+      if (!res.ok) throw new Error('Failed to add task')
+      await fetchTaskQueues()
+      setNewTaskDescription('')
+      setNewTaskKeystrokes('')
+      setNewTaskDelay('')
+    } catch (err) {
+      setQueueError(err instanceof Error ? err.message : 'Unknown error')
+    }
+  }
 
+  async function deleteTaskFromQueue(queueId: string, taskIndex: number) {
+    try {
+      const queue = taskQueues.find(q => q.id === queueId)
+      if (!queue) throw new Error('Queue not found')
+      
+      const updatedTasks = queue.tasks.filter((_, idx) => idx !== taskIndex)
+      
+      const res = await fetch(`${API_BASE}/task-queues/${queueId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...queue,
+          tasks: updatedTasks,
+        }),
+      })
+      if (!res.ok) throw new Error('Failed to delete task')
+      await fetchTaskQueues()
+    } catch (err) {
+      setQueueError(err instanceof Error ? err.message : 'Unknown error')
+    }
+  }
 
   function getVmName(vmId: string) {
     const vm = vmConfigs.find(v => v.id === vmId)
@@ -500,6 +555,37 @@ function App() {
                   {/* Tasks List */}
                   <div className="tasks-section">
                     <h4>Tasks ({queue.tasks.length})</h4>
+                    
+                    <div className="add-task-form">
+                      <input
+                        type="text"
+                        placeholder="Task description"
+                        value={newTaskDescription}
+                        onChange={(e) => setNewTaskDescription(e.target.value)}
+                        className="input input-small"
+                      />
+                      <input
+                        type="text"
+                        placeholder="Keystrokes (optional)"
+                        value={newTaskKeystrokes}
+                        onChange={(e) => setNewTaskKeystrokes(e.target.value)}
+                        className="input input-small"
+                      />
+                      <input
+                        type="number"
+                        placeholder="Delay ms"
+                        value={newTaskDelay}
+                        onChange={(e) => setNewTaskDelay(e.target.value)}
+                        className="input input-small"
+                      />
+                      <button 
+                        className="btn btn-small"
+                        onClick={() => addTaskToQueue(queue.id)}
+                      >
+                        Add
+                      </button>
+                    </div>
+
                     {queue.tasks.length === 0 ? (
                       <p className="empty">No tasks in this queue</p>
                     ) : (
@@ -514,6 +600,12 @@ function App() {
                             {task.delay_ms && (
                               <span className="task-delay">⏱️ {task.delay_ms}ms</span>
                             )}
+                            <button 
+                              className="btn btn-small btn-danger"
+                              onClick={() => deleteTaskFromQueue(queue.id, idx)}
+                            >
+                              ×
+                            </button>
                           </li>
                         ))}
                       </ul>
