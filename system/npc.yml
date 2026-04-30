@@ -33,6 +33,17 @@ spec:
           value: "no"
         args:
         - "generate"
+      - name: create-admin
+        image: matrixdotorg/synapse:latest
+        volumeMounts:
+        - name: matrix-data
+          mountPath: /data
+        command:
+        - "/bin/bash"
+        - "-c"
+        - |
+          openssl rand -base64 24 > /password
+          register_new_matrix_user -u controller -p $(cat /password) -a -c /data/homeserver.yaml
       containers:
       - name: synapse
         image: matrixdotorg/synapse:latest
