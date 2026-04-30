@@ -1,8 +1,8 @@
 [package]
-name = "npc-ui-backend"
+name = "controller-backend"
 edition = "2024"
 version = "0.1.0"
-description = "Backend API for NPC UI"
+description = "Backend API for Controller"
 license = "MIT"
 
 [dependencies]
