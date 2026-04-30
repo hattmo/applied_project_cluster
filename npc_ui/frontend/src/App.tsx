@@ -303,7 +303,7 @@ function App() {
           className={`tab ${activeTab === 'vms' ? 'active' : ''}`}
           onClick={() => setActiveTab('vms')}
         >
-          VM Configs
+          Agent Assignments
         </button>
         <button 
           className={`tab ${activeTab === 'queues' ? 'active' : ''}`}
@@ -313,11 +313,11 @@ function App() {
         </button>
       </div>
 
-      {/* VM Configs Tab */}
+      {/* Agent Assignments Tab */}
       {activeTab === 'vms' && (
         <div className="card">
           <div className="card-header">
-            <h2>VM Configurations</h2>
+            <h2>Agent Assignments</h2>
             <button className="btn btn-primary" onClick={() => setShowVmForm(!showVmForm)}>
               {showVmForm ? 'Cancel' : '+ Add VM'}
             </button>
