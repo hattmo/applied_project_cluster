@@ -163,31 +163,26 @@ async fn main() -> anyhow::Result<()> {
     };
 
     let app = Router::new()
-        // API routes
-        .route("/health", get(status_handler))
-        .route("/api/v1/status", get(status_handler))
-        // Agent routes (Matrix room members)
         .route("/api/v1/agents", get(list_agents))
-        // VM Config routes
         .route("/api/v1/vm-configs", get(list_vm_configs))
         .route("/api/v1/vm-configs", post(create_vm_config))
         .route("/api/v1/vm-configs/:id", get(get_vm_config))
         .route("/api/v1/vm-configs/:id", put(update_vm_config))
         .route("/api/v1/vm-configs/:id", delete(delete_vm_config))
-        // Task Queue routes
         .route("/api/v1/task-queues", get(list_task_queues))
         .route("/api/v1/task-queues", post(create_task_queue))
         .route("/api/v1/task-queues/:id", get(get_task_queue))
         .route("/api/v1/task-queues/:id", put(update_task_queue))
         .route("/api/v1/task-queues/:id", delete(delete_task_queue))
-        // Static files - serve frontend
         .nest_service(
             "/",
             ServeDir::new("/app/frontend/static").append_index_html_on_directories(true),
         )
-        .with_state(state)
         .layer(TraceLayer::new_for_http())
-        .layer(CorsLayer::permissive());
+        .route("/health", get(status_handler))
+        .route("/api/v1/status", get(status_handler))
+        .layer(CorsLayer::permissive())
+        .with_state(state);
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await?;
 
