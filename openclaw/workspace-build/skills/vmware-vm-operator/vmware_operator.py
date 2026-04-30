@@ -23,7 +23,7 @@ import requests
 # Configuration
 VMWARE_GATEWAY_URL = os.environ.get(
     "VMWARE_GATEWAY_URL",
-    "http://vmware-gateway-service.npc.svc.cluster.local:8888"
+    "http://vmware-gateway-service.npc.svc.cluster.local"
 )
 VMWARE_SCREENSHOT_DIR = os.environ.get(
     "VMWARE_SCREENSHOT_DIR",

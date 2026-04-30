@@ -30,13 +30,13 @@ spec:
         livenessProbe:
           httpGet:
             path: /
-            port: 80
+            port: 8080
           initialDelaySeconds: 10
           periodSeconds: 10
         readinessProbe:
           httpGet:
             path: /
-            port: 80
+            port: 8080
           initialDelaySeconds: 5
           periodSeconds: 5
 ---
@@ -51,7 +51,7 @@ spec:
     app: vmware
   ports:
   - port: 80
-    targetPort: 80
+    targetPort: 8080
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -227,17 +227,17 @@ spec:
       - name: npc-ui
         image: hattmo/npc-ui:latest
         ports:
-        - containerPort: 3000
+        - containerPort: 8080
         livenessProbe:
           httpGet:
             path: /health
-            port: 3000
+            port: 8080
           initialDelaySeconds: 10
           periodSeconds: 10
         readinessProbe:
           httpGet:
             path: /health
-            port: 3000
+            port: 8080
           initialDelaySeconds: 5
           periodSeconds: 5
         resources:
@@ -281,5 +281,5 @@ spec:
     app: npc-ui
   ports:
   - port: 80
-    targetPort: 80
+    targetPort: 8080
     protocol: TCP
