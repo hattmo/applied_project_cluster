@@ -4,14 +4,14 @@ on:
   push:
     branches: [main]
     paths:
-      - 'npc_ui/**'
+      - 'controller/**'
       - 'openclaw/**'
       - 'vmware_gateway/**'
       - '.github/workflows/build-images.yml'
   pull_request:
     branches: [main]
     paths:
-      - 'npc_ui/**'
+      - 'controller/**'
       - 'openclaw/**'
       - 'vmware_gateway/**'
 
@@ -19,8 +19,8 @@ env:
   REGISTRY: docker.io
 
 jobs:
-  # NPC UI Build
-  build-npc-ui:
+  # Controller Build
+  build-controller:
     runs-on: ubuntu-latest
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     permissions:
@@ -44,7 +44,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/hattmo/npc-ui
+          images: ${{ env.REGISTRY }}/hattmo/controller
           tags: |
             type=raw,value=latest,enable=${{ github.ref == format('refs/heads/{0}', 'main') }}
             type=ref,event=branch
@@ -56,7 +56,7 @@ jobs:
       - name: Build and push
         uses: docker/build-push-action@v5
         with:
-          context: ./npc_ui
+          context: ./controller
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}

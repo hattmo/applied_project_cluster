@@ -202,23 +202,23 @@ spec:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: npc-ui
+  name: controller
   namespace: npc
   labels:
-    app: npc-ui
+    app: controller
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: npc-ui
+      app: controller
   template:
     metadata:
       labels:
-        app: npc-ui
+        app: controller
     spec:
       containers:
-      - name: npc-ui
-        image: hattmo/npc-ui:latest
+      - name: controller
+        image: hattmo/controller:latest
         ports:
         - containerPort: 8080
         livenessProbe:
@@ -266,12 +266,12 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: npc-ui-service
+  name: controller-service
   namespace: npc
 spec:
   type: LoadBalancer
   selector:
-    app: npc-ui
+    app: controller
   ports:
   - port: 80
     targetPort: 8080
