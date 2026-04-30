@@ -4,6 +4,86 @@ metadata:
   name: npc
 ---
 apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: matrix-server
+  namespace: npc
+  labels:
+    app: matrix-server
+spec:
+  serviceName: matrix-server
+  replicas: 1
+  selector:
+    matchLabels:
+      app: matrix-server
+  template:
+    metadata:
+      labels:
+        app: matrix-server
+    spec:
+      containers:
+      - name: conduit
+        image: matrixorg/conduit:latest
+        ports:
+        - containerPort: 8008
+        env:
+        - name: CONDUIT_SERVER_NAME
+          value: "matrix.npc.svc.cluster.local"
+        - name: CONDUIT_ALLOW_REGISTRATION
+          value: "true"
+        - name: CONDUIT_ALLOW_FEDERATION
+          value: "false"
+        - name: CONDUIT_TRUSTED_SERVERS
+          value: '["matrix.npc.svc.cluster.local"]'
+        livenessProbe:
+          httpGet:
+            path: /_matrix/client/versions
+            port: 8008
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /_matrix/client/versions
+            port: 8008
+          initialDelaySeconds: 10
+          periodSeconds: 5
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "2Gi"
+            cpu: "1000m"
+        volumeMounts:
+        - name: matrix-data
+          mountPath: /var/lib/conduit
+      volumes:
+      - name: matrix-data
+        emptyDir: {}
+  volumeClaimTemplates:
+  - metadata:
+      name: matrix-data
+    spec:
+      accessModes:
+        - ReadWriteOnce
+      resources:
+        requests:
+          storage: 10Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: matrix-server
+  namespace: npc
+spec:
+  type: ClusterIP
+  selector:
+    app: matrix-server
+  ports:
+  - port: 80
+    targetPort: 8008
+---
+apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: vmware-gateway
