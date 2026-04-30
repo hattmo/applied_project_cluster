@@ -41,7 +41,7 @@ spec:
             cpu: "500m"
         env:
         - name: MATRIX_URL
-          value: "http://matrix-server.npc.svc.cluster.local"
+          value: "http://matrix.npc.svc.cluster.local"
         - name: VMWARE_GATEWAY_URL
           value: "http://vmware-gateway.npc.svc.cluster.local"
         - name: MATRIX_SECRET
