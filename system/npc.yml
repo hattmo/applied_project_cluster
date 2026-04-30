@@ -30,7 +30,7 @@ spec:
         - name: "SYNAPSE_SERVER_NAME"
           value: "matrix-server.npc.svc.cluster.local"
         - name: "SYNAPSE_REPORT_STATS"
-          value: "matrix-server.npc.svc.cluster.local"
+          value: "no"
         args:
         - "generate"
       containers:
