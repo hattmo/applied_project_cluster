@@ -5,25 +5,21 @@ import './App.css'
 interface MatrixUser {
   user_id: string
   display_name: string | null
-  avatar_url: string | null
-  is_bot: boolean
 }
 
 interface VmConfig {
   id: string
   name: string
-  agent_id: string
+  user_id: string
   enabled: boolean
   created_at: string
   updated_at: string
 }
 
 interface Task {
-  id: string
   description: string
   keystrokes?: string
   delay_ms?: number
-  completed: boolean
 }
 
 interface TaskQueue {
@@ -31,7 +27,6 @@ interface TaskQueue {
   vm_id: string
   name: string
   tasks: Task[]
-  loop_enabled: boolean
   enabled: boolean
   created_at: string
   updated_at: string
@@ -55,7 +50,7 @@ function App() {
   const [vmError, setVmError] = useState<string | null>(null)
   const [showVmForm, setShowVmForm] = useState(false)
   const [newVmName, setNewVmName] = useState('')
-  const [newVmAgentId, setNewVmAgentId] = useState('')
+  const [newVmUserId, setNewVmUserId] = useState('')
   const [editingVm, setEditingVm] = useState<VmConfig | null>(null)
 
   // Task Queues state
@@ -65,11 +60,7 @@ function App() {
   const [showQueueForm, setShowQueueForm] = useState(false)
   const [newQueueName, setNewQueueName] = useState('')
   const [newQueueVmId, setNewQueueVmId] = useState('')
-  const [newQueueLoop, setNewQueueLoop] = useState(false)
   const [editingQueue, setEditingQueue] = useState<TaskQueue | null>(null)
-  const [newTaskDescription, setNewTaskDescription] = useState('')
-  const [newTaskKeystrokes, setNewTaskKeystrokes] = useState('')
-  const [newTaskDelay, setNewTaskDelay] = useState('')
 
   // Load Matrix status and agents
   useEffect(() => {
@@ -95,9 +86,9 @@ function App() {
       if (!res.ok) throw new Error('Failed to fetch status')
       const data = await res.json()
       setMatrixStatus({
-        connected: data.matrix_connected,
-        room_id: data.matrix_room_id,
-        members: data.room_members_count,
+        connected: true,
+        room_id: data.room_id,
+        members: agents.length,
       })
     } catch (err) {
       console.error('Failed to fetch Matrix status:', err)
@@ -148,12 +139,12 @@ function App() {
       const res = await fetch(`${API_BASE}/vm-configs`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: newVmName, agent_id: newVmAgentId }),
+        body: JSON.stringify({ name: newVmName, user_id: newVmUserId, enabled: true }),
       })
       if (!res.ok) throw new Error('Failed to create VM config')
       await fetchVmConfigs()
       setNewVmName('')
-      setNewVmAgentId('')
+      setNewVmUserId('')
       setShowVmForm(false)
     } catch (err) {
       setVmError(err instanceof Error ? err.message : 'Unknown error')
@@ -194,14 +185,14 @@ function App() {
         body: JSON.stringify({ 
           vm_id: newQueueVmId, 
           name: newQueueName, 
-          loop_enabled: newQueueLoop 
+          tasks: [],
+          enabled: true
         }),
       })
       if (!res.ok) throw new Error('Failed to create task queue')
       await fetchTaskQueues()
       setNewQueueName('')
       setNewQueueVmId('')
-      setNewQueueLoop(false)
       setShowQueueForm(false)
     } catch (err) {
       setQueueError(err instanceof Error ? err.message : 'Unknown error')
@@ -234,46 +225,16 @@ function App() {
     }
   }
 
-  async function addTaskToQueue(queueId: string) {
-    if (!newTaskDescription.trim()) return
-    try {
-      const res = await fetch(`${API_BASE}/task-queues/${queueId}/tasks`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          description: newTaskDescription,
-          keystrokes: newTaskKeystrokes || undefined,
-          delay_ms: newTaskDelay ? parseInt(newTaskDelay) : undefined,
-        }),
-      })
-      if (!res.ok) throw new Error('Failed to add task')
-      await fetchTaskQueues()
-      setNewTaskDescription('')
-      setNewTaskKeystrokes('')
-      setNewTaskDelay('')
-    } catch (err) {
-      setQueueError(err instanceof Error ? err.message : 'Unknown error')
-    }
-  }
 
-  async function deleteTaskFromQueue(queueId: string, taskId: string) {
-    try {
-      const res = await fetch(`${API_BASE}/task-queues/${queueId}/tasks/${taskId}`, { method: 'DELETE' })
-      if (!res.ok) throw new Error('Failed to delete task')
-      await fetchTaskQueues()
-    } catch (err) {
-      setQueueError(err instanceof Error ? err.message : 'Unknown error')
-    }
-  }
 
   function getVmName(vmId: string) {
     const vm = vmConfigs.find(v => v.id === vmId)
     return vm ? vm.name : vmId
   }
 
-  function getAgentDisplayName(agentId: string) {
-    const agent = agents.find(a => a.user_id === agentId)
-    if (!agent) return agentId
+  function getAgentDisplayName(userId: string) {
+    const agent = agents.find(a => a.user_id === userId)
+    if (!agent) return userId
     return agent.display_name || agent.user_id
   }
 
@@ -333,22 +294,21 @@ function App() {
                 className="input"
               />
               <select
-                value={newVmAgentId}
-                onChange={(e) => setNewVmAgentId(e.target.value)}
+                value={newVmUserId}
+                onChange={(e) => setNewVmUserId(e.target.value)}
                 className="input"
               >
-                <option value="">Select Agent</option>
+                <option value="">Select User</option>
                 {agentsLoading ? (
-                  <option disabled>Loading agents...</option>
+                  <option disabled>Loading users...</option>
                 ) : agentsError ? (
-                  <option disabled>Error loading agents</option>
+                  <option disabled>Error loading users</option>
                 ) : agents.length === 0 ? (
-                  <option disabled>No agents available</option>
+                  <option disabled>No users available</option>
                 ) : (
                   agents.map((agent) => (
                     <option key={agent.user_id} value={agent.user_id}>
                       {agent.display_name || agent.user_id}
-                      {agent.is_bot ? ' 🤖' : ''}
                     </option>
                   ))
                 )}
@@ -376,14 +336,13 @@ function App() {
                         className="input"
                       />
                       <select
-                        defaultValue={vm.agent_id}
-                        onBlur={(e) => updateVmConfig(vm.id, { agent_id: e.target.value })}
+                        defaultValue={vm.user_id}
+                        onBlur={(e) => updateVmConfig(vm.id, { user_id: e.target.value })}
                         className="input"
                       >
                         {agents.map((agent) => (
                           <option key={agent.user_id} value={agent.user_id}>
                             {agent.display_name || agent.user_id}
-                            {agent.is_bot ? ' 🤖' : ''}
                           </option>
                         ))}
                       </select>
@@ -392,7 +351,7 @@ function App() {
                     <div className="item-content">
                       <div>
                         <strong>{vm.name}</strong>
-                        <span className="badge">Agent: {getAgentDisplayName(vm.agent_id)}</span>
+                        <span className="badge">User: {getAgentDisplayName(vm.user_id)}</span>
                       </div>
                       <span className={`status ${vm.enabled ? 'active' : 'inactive'}`}>
                         {vm.enabled ? '● Active' : '○ Inactive'}
@@ -454,14 +413,7 @@ function App() {
                 onChange={(e) => setNewQueueName(e.target.value)}
                 className="input"
               />
-              <label className="checkbox-label">
-                <input
-                  type="checkbox"
-                  checked={newQueueLoop}
-                  onChange={(e) => setNewQueueLoop(e.target.checked)}
-                />
-                Loop continuously
-              </label>
+
               <button className="btn btn-primary" onClick={createTaskQueue}>Create</button>
             </div>
           )}
@@ -492,7 +444,6 @@ function App() {
                       <span className={`status ${queue.enabled ? 'active' : 'inactive'}`}>
                         {queue.enabled ? '● Active' : '○ Inactive'}
                       </span>
-                      {queue.loop_enabled && <span className="badge badge-loop">🔄 Loop</span>}
                     </div>
                   </div>
                   
@@ -519,43 +470,12 @@ function App() {
                   {/* Tasks List */}
                   <div className="tasks-section">
                     <h4>Tasks ({queue.tasks.length})</h4>
-                    
-                    <div className="add-task-form">
-                      <input
-                        type="text"
-                        placeholder="Task description"
-                        value={newTaskDescription}
-                        onChange={(e) => setNewTaskDescription(e.target.value)}
-                        className="input input-small"
-                      />
-                      <input
-                        type="text"
-                        placeholder="Keystrokes (optional)"
-                        value={newTaskKeystrokes}
-                        onChange={(e) => setNewTaskKeystrokes(e.target.value)}
-                        className="input input-small"
-                      />
-                      <input
-                        type="number"
-                        placeholder="Delay ms"
-                        value={newTaskDelay}
-                        onChange={(e) => setNewTaskDelay(e.target.value)}
-                        className="input input-small"
-                      />
-                      <button 
-                        className="btn btn-small"
-                        onClick={() => addTaskToQueue(queue.id)}
-                      >
-                        Add
-                      </button>
-                    </div>
-
                     {queue.tasks.length === 0 ? (
                       <p className="empty">No tasks in this queue</p>
                     ) : (
                       <ul className="tasks-list">
                         {queue.tasks.map((task, idx) => (
-                          <li key={task.id} className={`task-item ${task.completed ? 'completed' : ''}`}>
+                          <li key={idx} className="task-item">
                             <span className="task-number">{idx + 1}.</span>
                             <span className="task-desc">{task.description}</span>
                             {task.keystrokes && (
@@ -564,12 +484,6 @@ function App() {
                             {task.delay_ms && (
                               <span className="task-delay">⏱️ {task.delay_ms}ms</span>
                             )}
-                            <button 
-                              className="btn btn-small btn-danger"
-                              onClick={() => deleteTaskFromQueue(queue.id, task.id)}
-                            >
-                              ×
-                            </button>
                           </li>
                         ))}
                       </ul>
