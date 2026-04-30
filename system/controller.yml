@@ -44,16 +44,21 @@ spec:
         #   value: matrix.npc.svc.cluster.local
         # - name: VMWARE_GATEWAY_URL
         #   value: vmware-gateway.npc.svc.cluster.local
-        - name: MATRIX_USER
+        - name: MATRIX_SECRET
           valueFrom:
             secretKeyRef:
-              name: controller-matrix-creds
-              key: user
-        - name: MATRIX_PASSWORD
-          valueFrom:
-            secretKeyRef:
-              name: controller-matrix-creds
-              key: password
+              name: matrix-shared-secret
+              key: shared_secret
+        # - name: MATRIX_USER
+        #   valueFrom:
+        #     secretKeyRef:
+        #       name: controller-matrix-creds
+        #       key: user
+        # - name: MATRIX_PASSWORD
+        #   valueFrom:
+        #     secretKeyRef:
+        #       name: controller-matrix-creds
+        #       key: password
 ---
 apiVersion: v1
 kind: Service
