@@ -33,7 +33,7 @@ struct MatrixState {
     room_members: Arc<RwLock<Box<[MatrixUser]>>>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 struct MatrixUser {
     user_id: String,
     display_name: Option<String>,
@@ -225,18 +225,21 @@ async fn sync_matrix_room(
             tracing::error!("Failed to get room members");
             continue;
         };
-        let members: Box<[MatrixUser]> = members
+        let mut members: Box<[MatrixUser]> = members
             .iter()
             .map(|m| MatrixUser {
                 user_id: m.user_id().as_str().to_owned(),
                 display_name: m.display_name().map(ToOwned::to_owned),
             })
             .collect();
-        tracing::info!(?members, "Updated members");
+        members.sort();
 
         // Update shared state
         let mut stored_members = matrix_state.room_members.write().await;
-        *stored_members = members;
+        if *stored_members != members {
+            tracing::info!(?members, "Updated members");
+            *stored_members = members;
+        }
     }
     Ok(())
 }
