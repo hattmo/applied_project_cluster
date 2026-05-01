@@ -177,7 +177,7 @@ async fn create_client(
         .json::<serde_json::Value>()
         .await?;
 
-    tracing::debug!(nonce_response, "Register get response");
+    tracing::debug!(?nonce_response, "Register api get response");
 
     let nonce = nonce_response
         .get("nonce")
