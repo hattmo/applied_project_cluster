@@ -167,7 +167,8 @@ async fn create_client(
         .timeout(Duration::from_secs(30))
         .build()?;
 
-    let register_url = format!("http://{}/_matrix/client/r0/admin/register", matrix_url);
+    // Synapse admin registration endpoint (not the client r0 API)
+    let register_url = format!("{}/_synapse/admin/v1/register", matrix_url);
 
     // Generate nonce first
     let nonce_response = http_client
