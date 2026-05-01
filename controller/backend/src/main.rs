@@ -7,7 +7,7 @@ use axum::{
 };
 use matrix_sdk::{
     Client, OwnedServerName, RoomMemberships, ServerName,
-    ruma::{OwnedRoomOrAliasId, RoomOrAliasId, api::client::account::register},
+    ruma::{OwnedRoomOrAliasId, RoomOrAliasId},
 };
 use reqwest::Client as HttpClient;
 use serde::{Deserialize, Serialize};
@@ -20,14 +20,13 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 #[derive(Clone)]
 struct AppState {
     version: &'static str,
-    home_server: &'static str,
-    room_id: &'static str,
-    user_id: &'static str,
-    vmware_gateway_url: String,
+    matrix_hostname: &'static str,
+    vmware_gateway_hostname: &'static str,
+    username: &'static str,
     vm_configs: Arc<RwLock<Vec<VmConfig>>>,
     task_queues: Arc<RwLock<Vec<TaskQueue>>>,
-    client: Client,
     http_client: HttpClient,
+    client: Client,
     matrix_state: MatrixState,
 }
 
@@ -45,9 +44,9 @@ struct MatrixUser {
 #[derive(Serialize)]
 struct HealthResponse {
     version: &'static str,
-    home_server: &'static str,
-    room_id: &'static str,
-    user_id: &'static str,
+    vmware_gateway_hostname: &'static str,
+    matrix_hostname: &'static str,
+    username: &'static str,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -117,123 +116,123 @@ struct UpdateTaskQueue {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct MatrixCredentials {
-    user_id: String,
+    username: String,
     password: String,
 }
 
-fn load_or_create_credentials(
+async fn create_client(
     data_path: &str,
     matrix_url: &str,
     shared_secret: &str,
-) -> anyhow::Result<MatrixCredentials> {
+) -> anyhow::Result<(Client, &'static str)> {
     use std::fs;
     use std::path::Path;
-    
+
     let creds_path = Path::new(data_path).join("matrix_credentials.json");
-    
+
     // Try to load existing credentials
     if creds_path.exists() {
         tracing::info!("Loading existing Matrix credentials from {:?}", creds_path);
         let content = fs::read_to_string(&creds_path)?;
         let creds: MatrixCredentials = serde_json::from_str(&content)?;
-        
+
         // Test if credentials work by attempting a login
-        let rt = tokio::runtime::Runtime::new()?;
-        let test_result = rt.block_on(async {
-            let client = Client::builder()
-                .server_name(ServerName::parse("matrix.npc.svc.cluster.local")?)
-                .build()
-                .await?;
-            client
-                .matrix_auth()
-                .login_username(&creds.user_id, &creds.password)
-                .send()
-                .await
-        });
-        
+        let client = Client::builder()
+            .server_name(&ServerName::parse("matrix.npc.svc.cluster.local")?)
+            .build()
+            .await?;
+        let test_result = client
+            .matrix_auth()
+            .login_username(&creds.username, &creds.password)
+            .send()
+            .await;
+
         if test_result.is_ok() {
             tracing::info!("Existing Matrix credentials are valid");
-            return Ok(creds);
+            return Ok((client, creds.username.clone().leak()));
         }
         tracing::warn!("Existing Matrix credentials are invalid, will create new account");
     }
-    
+
     // Create new account using shared secret
     tracing::info!("Creating new Matrix account using shared secret...");
-    
-    let username = "controller";
+
+    let username = "controller".to_owned();
     let password = uuid::Uuid::new_v4().to_string();
-    let user_id = format!("@{}:matrix.npc.svc.cluster.local", username);
-    
-    let rt = tokio::runtime::Runtime::new()?;
-    rt.block_on(async {
-        let client = HttpClient::builder()
-            .timeout(Duration::from_secs(30))
-            .build()?;
-        
-        let register_url = format!("{}/_matrix/client/r0/admin/register", matrix_url);
-        
-        // Generate nonce first
-        let nonce_response = client
-            .get(&register_url)
-            .send()
-            .await?
-            .json::<serde_json::Value>()
-            .await?;
-        
-        let nonce = nonce_response.get("nonce")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| anyhow::anyhow!("No nonce in response"))?;
-        
-        // Generate signature: sha256(nonce + 0 + username + shared_secret)
-        use sha2::{Sha256, Digest};
-        let mut hasher = Sha256::new();
-        hasher.update(nonce);
-        hasher.update([0u8]); // admin = 0
-        hasher.update(username.as_bytes());
-        hasher.update(shared_secret.as_bytes());
-        let signature = hex::encode(hasher.finalize());
-        
-        let register_body = serde_json::json!({
-            "nonce": nonce,
-            "username": username,
-            "password": password,
-            "admin": true,
-            "mac": signature
-        });
-        
-        let response = client
-            .post(&register_url)
-            .json(&register_body)
-            .send()
-            .await?;
-        
-        if !response.status().is_success() {
-            let error = response.text().await?;
-            anyhow::bail!("Registration failed: {}", error);
-        }
-        
-        tracing::info!("Matrix account created successfully: {}", user_id);
-        
-        // Save credentials
-        let creds = MatrixCredentials {
-            user_id: user_id.clone(),
+    // let user_id = format!("@{}:matrix.npc.svc.cluster.local", username);
+
+    let http_client = HttpClient::builder()
+        .timeout(Duration::from_secs(30))
+        .build()?;
+
+    let register_url = format!("{}/_matrix/client/r0/admin/register", matrix_url);
+
+    // Generate nonce first
+    let nonce_response = http_client
+        .get(&register_url)
+        .send()
+        .await?
+        .json::<serde_json::Value>()
+        .await?;
+
+    let nonce = nonce_response
+        .get("nonce")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow::anyhow!("No nonce in response"))?;
+
+    // Generate signature: sha256(nonce + 0 + username + shared_secret)
+    use sha2::{Digest, Sha256};
+    let mut hasher = Sha256::new();
+    hasher.update(nonce);
+    hasher.update([0u8]); // admin = 0
+    hasher.update(username.as_bytes());
+    hasher.update(shared_secret.as_bytes());
+    let signature = hex::encode(hasher.finalize());
+
+    let register_body = serde_json::json!({
+        "nonce": nonce,
+        "username": username,
+        "password": password,
+        "admin": true,
+        "mac": signature
+    });
+
+    let response = http_client
+        .post(&register_url)
+        .json(&register_body)
+        .send()
+        .await?;
+
+    if !response.status().is_success() {
+        let error = response.text().await?;
+        anyhow::bail!("Registration failed: {}", error);
+    }
+
+    tracing::info!("Matrix account created successfully: {}", username);
+
+    // Save credentials
+
+    fs::create_dir_all(data_path)?;
+    fs::write(
+        &creds_path,
+        serde_json::to_string_pretty(&MatrixCredentials {
+            username: username.clone(),
             password: password.clone(),
-        };
-        
-        fs::create_dir_all(data_path)?;
-        fs::write(&creds_path, serde_json::to_string_pretty(&creds)?)?;
-        tracing::info!("Credentials saved to {:?}", creds_path);
-        
-        Ok::<_, anyhow::Error>(creds)
-    })?;
-    
-    let creds = MatrixCredentials {
-        user_id,
-        password,
-    };
-    
-    Ok(creds)
+        })?,
+    )?;
+    tracing::info!("Credentials saved to {:?}", creds_path);
+
+    let client = Client::builder()
+        .server_name(&ServerName::parse("matrix.npc.svc.cluster.local")?)
+        .build()
+        .await?;
+    client
+        .matrix_auth()
+        .login_username(&username, &password)
+        .send()
+        .await?;
+
+    Ok((client, username.leak()))
 }
 
 #[tokio::main]
@@ -249,32 +248,24 @@ async fn main() -> anyhow::Result<()> {
         .init();
 
     // Load environment variables
-    let matrix_url = std::env::var("MATRIX_URL")
-        .unwrap_or_else(|_| "http://matrix.npc.svc.cluster.local".to_string());
+
+    let matrix_hostname: &'static str = std::env::var("MATRIX_HOSTNAME")
+        .unwrap_or_else(|_| "matrix.npc.svc.cluster.local".to_string())
+        .leak();
+    let vmware_gateway_hostname: &'static str = std::env::var("VMWARE_GATEWAY_HOSTNAME")
+        .unwrap_or_else(|_| "vmware-gateway.npc.svc.cluster.local".to_string())
+        .leak();
+
     let matrix_secret = std::env::var("MATRIX_SECRET")?;
-    let matrix_data_path = std::env::var("MATRIX_DATA_PATH")
-        .unwrap_or_else(|_| "/app/matrix-data".to_string());
-    let vmware_gateway_url = std::env::var("VMWARE_GATEWAY_URL")
-        .unwrap_or_else(|_| "http://vmware-gateway.npc.svc.cluster.local".to_string());
+    let matrix_data_path =
+        std::env::var("MATRIX_DATA_PATH").unwrap_or_else(|_| "/app/matrix-data".to_string());
 
     // Load or create Matrix credentials
-    let credentials = load_or_create_credentials(&matrix_data_path, &matrix_url, &matrix_secret)?;
-    let user_id: &str = credentials.user_id.leak();
-    let password: &str = credentials.password.leak();
+    let (client, username) =
+        create_client(&matrix_data_path, matrix_hostname, &matrix_secret).await?;
 
-    let owned_room_id = RoomOrAliasId::parse("#agent_room:matrix.npc.svc.cluster.local")?;
-    let owned_server_name = ServerName::parse("matrix.npc.svc.cluster.local")?;
-
-    let client = Client::builder()
-        .server_name(&owned_server_name)
-        .build()
-        .await?;
-    let response = client
-        .matrix_auth()
-        .login_username(user_id, password)
-        .send()
-        .await?;
-    tracing::info!("Matrix login successful: {}", response.user_id);
+    let owned_room_id = RoomOrAliasId::parse("#agent_room:{matrix_hostname}")?;
+    let owned_server_name = ServerName::parse(matrix_hostname)?;
 
     let matrix_state = MatrixState {
         room_members: Arc::new(RwLock::new(Default::default())),
@@ -296,15 +287,14 @@ async fn main() -> anyhow::Result<()> {
 
     let state = AppState {
         version: env!("CARGO_PKG_VERSION"),
-        home_server,
-        user_id,
-        room_id,
-        vmware_gateway_url,
+        matrix_hostname,
+        vmware_gateway_hostname,
         vm_configs: Arc::new(RwLock::new(Vec::new())),
         task_queues: Arc::new(RwLock::new(Vec::new())),
-        client,
         http_client,
+        client,
         matrix_state,
+        username,
     };
 
     let app = Router::new()
@@ -392,17 +382,17 @@ async fn sync_matrix_room(
 
 async fn status_handler(State(state): State<AppState>) -> Json<HealthResponse> {
     let AppState {
+        vmware_gateway_hostname,
+        matrix_hostname,
         version,
-        home_server,
-        room_id,
-        user_id,
+        username,
         ..
     } = state;
     Json(HealthResponse {
         version,
-        home_server,
-        room_id,
-        user_id,
+        vmware_gateway_hostname,
+        matrix_hostname,
+        username,
     })
 }
 
@@ -414,7 +404,7 @@ async fn list_agents(State(state): State<AppState>) -> Json<Box<[MatrixUser]>> {
 
 // VMware VM handlers
 async fn list_vms(State(state): State<AppState>) -> Result<Json<Vec<String>>, StatusCode> {
-    let url = format!("{}/api/vms", state.vmware_gateway_url);
+    let url = format!("https://{}/api/vms", state.vmware_gateway_hostname);
 
     let response = state.http_client.get(&url).send().await.map_err(|e| {
         tracing::error!("Failed to fetch VMs from vmware_gateway: {}", e);
@@ -513,7 +503,6 @@ async fn delete_vm_config(
     Ok(StatusCode::NO_CONTENT)
 }
 
-// Task Queue handlers
 async fn list_task_queues(State(state): State<AppState>) -> Json<Vec<TaskQueue>> {
     let queues = state.task_queues.read().await;
     Json(queues.clone())
