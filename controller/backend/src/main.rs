@@ -122,7 +122,7 @@ struct MatrixCredentials {
 
 async fn create_client(
     data_path: &str,
-    matrix_url: &str,
+    matrix_hostname: &str,
     shared_secret: &str,
 ) -> anyhow::Result<(Client, &'static str)> {
     use std::fs;
@@ -168,7 +168,7 @@ async fn create_client(
         .build()?;
 
     // Synapse admin registration endpoint (not the client r0 API)
-    let register_url = format!("{}/_synapse/admin/v1/register", matrix_url);
+    let register_url = format!("http://{}/_synapse/admin/v1/register", matrix_hostname);
 
     // Generate nonce first
     let nonce_response = http_client
