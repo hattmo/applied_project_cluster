@@ -133,7 +133,7 @@ async fn create_client(
 ) -> anyhow::Result<(Client, &'static str)> {
     let username = "controller";
     let client = Client::builder()
-        .server_name(&ServerName::parse(matrix_hostname)?)
+        .insecure_server_name_no_tls(&ServerName::parse(matrix_hostname)?)
         .build()
         .await?;
     let test_result = client
