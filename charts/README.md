@@ -10,21 +10,21 @@ Helm chart for deploying NPC infrastructure components to Kubernetes.
 
 ## Version Management
 
-Image versions are managed in `charts/npc/values.yaml`. This is the **single source of truth** for:
+Image versions are managed in `charts/values.yaml`. This is the **single source of truth** for:
 - Docker image tags (CI/CD reads from here)
 - Kubernetes deployments (Helm uses these values)
 
 ### Updating Versions
 
 ```bash
-# 1. Edit charts/npc/values.yaml
+# 1. Edit charts/values.yaml
 # Change tag values under images section:
 #   images:
 #     controller:
 #       tag: "0.2.0"  # <- Update this
 
 # 2. Commit and push
-git add charts/npc/values.yaml
+git add charts/values.yaml
 git commit -m "bump: controller v0.2.0"
 git push
 ```
@@ -54,7 +54,7 @@ spec:
   source:
     repoURL: https://github.com/hattmo/applied_project_cluster.git
     targetRevision: HEAD
-    path: charts/npc
+    path: charts
   destination:
     server: https://kubernetes.default.svc
     namespace: npc
