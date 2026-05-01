@@ -28,10 +28,10 @@ spec:
       selfHeal: true
 ```
 
-This applies:
-- MetalLB IP pools (`metallb-dev.yaml`, `metallb-prod.yaml`)
-- LoadBalancer services (`loadbalancer-dev.yaml`, `loadbalancer-prod.yaml`)
-- ArgoCD applications for dev/prod environments (`dev-npc.yaml`, `prod-npc.yaml`)
+This applies all manifests in `system/dev/` and `system/prod/`:
+- MetalLB IP pools
+- LoadBalancer services
+- ArgoCD applications for dev/prod environments
 
 ### 2. Create Credentials Secret
 
@@ -78,12 +78,14 @@ applied_project_cluster/
 │   │   ├── vmware-gateway.yaml     # VMware Gateway
 │   │   └── matrix.yaml             # Matrix Synapse
 ├── system/                         # ArgoCD and infrastructure manifests
-│   ├── dev-npc.yaml                # ArgoCD app for dev
-│   ├── prod-npc.yaml               # ArgoCD app for prod
-│   ├── metallb-dev.yaml            # MetalLB IP pool for dev
-│   ├── metallb-prod.yaml           # MetalLB IP pool for prod
-│   ├── loadbalancer-dev.yaml       # LoadBalancer service for dev
-│   └── loadbalancer-prod.yaml      # LoadBalancer service for prod
+│   ├── dev/                        # Dev environment
+│   │   ├── application.yml         # ArgoCD app (tracks dev branch)
+│   │   ├── ipaddresspool.yml       # MetalLB IP pool
+│   │   └── service.yml             # LoadBalancer service
+│   └── prod/                       # Prod environment
+│       ├── application.yml         # ArgoCD app (tracks main branch)
+│       ├── ipaddresspool.yml       # MetalLB IP pool
+│       └── service.yml             # LoadBalancer service
 └── .github/workflows/
     └── build-images.yml            # CI/CD builds images from values.yaml
 ```
