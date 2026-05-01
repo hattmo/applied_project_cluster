@@ -24,26 +24,25 @@ The chart expects a secret named `creds` to exist in the target namespace. Creat
 
 ```bash
 kubectl create secret generic creds -n <namespace> \
-  --from-literal=matrix-shared-secret="<secret>" \
   --from-literal=ollama-api-key="<key>" \
   --from-literal=agent-matrix-user="@user:server" \
   --from-literal=agent-matrix-password="<password>" \
-  --from-file=ssh-keys=path/to/ssh-keys-dir/
+  --from-file=ssh-keys=path/to/ssh-keys-dir/ \
+  --from-literal=VMWARE_HOST="<host>" \
+  --from-literal=VMWARE_USER="<user>" \
+  --from-literal=VMWARE_PASSWORD="<pass>"
 ```
 
 **Required keys:**
-- `matrix-shared-secret` - Matrix admin registration secret
 - `ollama-api-key` - Ollama API key
 - `agent-matrix-user` - Agent Matrix user ID
 - `agent-matrix-password` - Agent Matrix password
 - `ssh-keys/` - Directory containing `id_ed25519` and `id_ed25519.pub`
+- `VMWARE_HOST`, `VMWARE_USER`, `VMWARE_PASSWORD` - VMware credentials (envFrom)
 
-### VMware Credentials
+### Matrix Shared Secret
 
-The `creds` secret should also contain VMware credentials as env vars:
-- `VMWARE_HOST`
-- `VMWARE_USER`
-- `VMWARE_PASSWORD`
+The Matrix deployment automatically creates `matrix-shared-secret` on first run. No manual action needed.
 
 ## Installation
 
@@ -76,4 +75,16 @@ kubectl apply -f system/loadbalancer-dev.yaml
 
 # Prod
 kubectl apply -f system/loadbalancer-prod.yaml
+```
+
+## MetalLB IP Pools
+
+Apply the MetalLB IP pool configuration for your environment:
+
+```bash
+# Dev
+kubectl apply -f system/metallb-dev.yaml
+
+# Prod
+kubectl apply -f system/metallb-prod.yaml
 ```
