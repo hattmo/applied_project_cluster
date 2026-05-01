@@ -2,7 +2,7 @@ name: Build and Push Images
 
 on:
   push:
-    branches: [main]
+    branches: [main, dev]
     paths:
       - 'controller/**'
       - 'openclaw/**'
@@ -10,12 +10,13 @@ on:
       - 'chart/values.yaml'
       - '.github/workflows/build-images.yml'
   pull_request:
-    branches: [main]
+    branches: [main, dev]
     paths:
       - 'controller/**'
       - 'openclaw/**'
       - 'vmware_gateway/**'
-
+      - '.github/workflows/build-images.yml'
+      - 'chart/values.yaml'
 env:
   REGISTRY: docker.io
 
