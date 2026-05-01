@@ -3,8 +3,8 @@
 
 images:
   controller:
-    tag: "0.1.2"
+    tag: "0.1.3"
   openclaw:
-    tag: "0.1.0"
+    tag: "0.1.1"
   vmwareGateway:
-    tag: "0.1.0"
+    tag: "0.1.1"
