@@ -1,0 +1,89 @@
+{{- if .Values.controller.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: controller
+  namespace: {{ .Values.namespace }}
+  labels:
+    app: controller
+    app.kubernetes.io/name: controller
+    app.kubernetes.io/version: {{ .Values.images.controller.tag | quote }}
+spec:
+  replicas: {{ .Values.controller.replicas }}
+  selector:
+    matchLabels:
+      app: controller
+  template:
+    metadata:
+      labels:
+        app: controller
+        app.kubernetes.io/name: controller
+        app.kubernetes.io/version: {{ .Values.images.controller.tag | quote }}
+    spec:
+      containers:
+      - name: controller
+        image: "{{ .Values.images.controller.repository }}:{{ .Values.images.controller.tag }}"
+        imagePullPolicy: {{ .Values.images.controller.pullPolicy }}
+        ports:
+        - containerPort: 8080
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        resources: {{- toYaml .Values.controller.resources | nindent 10 }}
+        env:
+        - name: MATRIX_URL
+          value: {{ .Values.controller.matrix.url | quote }}
+        - name: VMWARE_GATEWAY_URL
+          value: {{ .Values.controller.vmwareGateway.url | quote }}
+        - name: MATRIX_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: matrix-shared-secret
+              key: shared_secret
+        - name: MATRIX_DATA_PATH
+          value: {{ .Values.controller.matrix.dataPath | quote }}
+        volumeMounts:
+        - name: matrix-data
+          mountPath: {{ .Values.controller.matrix.dataPath }}
+      volumes:
+      - name: matrix-data
+        persistentVolumeClaim:
+          claimName: controller-matrix-pvc
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: controller-matrix-pvc
+  namespace: {{ .Values.namespace }}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: {{ .Values.controller.matrix.storageSize }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: controller
+  namespace: {{ .Values.namespace }}
+  labels:
+    app: controller
+spec:
+  type: {{ .Values.controller.service.type }}
+  selector:
+    app: controller
+  ports:
+  - port: {{ .Values.controller.service.port }}
+    targetPort: {{ .Values.controller.service.targetPort }}
+    protocol: TCP
+{{- end }}
