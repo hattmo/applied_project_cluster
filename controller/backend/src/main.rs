@@ -185,12 +185,13 @@ async fn create_client(
         .and_then(|v| v.as_str())
         .ok_or_else(|| anyhow::anyhow!("No nonce in response"))?;
 
-    // Generate signature: sha256(nonce + 0 + username + shared_secret)
+    // Generate signature: sha256(nonce + '\x00' + username + '\x00' + shared_secret)
     use sha2::{Digest, Sha256};
     let mut hasher = Sha256::new();
     hasher.update(nonce);
-    hasher.update([0u8]); // admin = 0
+    hasher.update([0u8]); // null separator
     hasher.update(username.as_bytes());
+    hasher.update([0u8]); // null separator
     hasher.update(shared_secret.as_bytes());
     let signature = hex::encode(hasher.finalize());
 
