@@ -1,95 +1,11 @@
-# NPC Infrastructure Values
 # Image versions - single source of truth
-# Update these versions to deploy new image tags
+# CI reads these tags and builds/pushes images
+# ArgoCD deploys with these tags
 
 images:
   controller:
-    repository: hattmo/controller
     tag: "0.1.0"
-    pullPolicy: IfNotPresent
-    
   openclaw:
-    repository: hattmo/openclaw
     tag: "0.1.0"
-    pullPolicy: IfNotPresent
-    
   vmwareGateway:
-    repository: hattmo/vmware-gateway
     tag: "0.1.0"
-    pullPolicy: IfNotPresent
-
-# Namespace for all NPC components
-namespace: npc
-
-# Controller Configuration
-controller:
-  enabled: true
-  replicas: 1
-  resources:
-    requests:
-      memory: "128Mi"
-      cpu: "100m"
-    limits:
-      memory: "512Mi"
-      cpu: "500m"
-  service:
-    type: LoadBalancer
-    port: 80
-    targetPort: 8080
-  matrix:
-    url: "http://matrix.npc.svc.cluster.local"
-    dataPath: "/app/matrix-data"
-    storageSize: "100Mi"
-  vmwareGateway:
-    url: "http://vmware-gateway.npc.svc.cluster.local"
-
-# Agent Configuration (OpenClaw + Ollama)
-agent:
-  enabled: true
-  replicas: 1
-  ollama:
-    image:
-      repository: ollama/ollama
-      tag: "latest"
-    model: "qwen:3.5"
-    resources:
-      requests:
-        memory: "2Gi"
-        cpu: "1000m"
-      limits:
-        memory: "8Gi"
-        cpu: "4000m"
-    storageSize: "20Gi"
-  openclaw:
-    resources:
-      requests:
-        memory: "512Mi"
-        cpu: "250m"
-      limits:
-        memory: "2Gi"
-        cpu: "1000m"
-    healthCheck:
-      initialDelaySeconds: 120
-      periodSeconds: 60
-      timeoutSeconds: 20
-
-# VMware Gateway Configuration
-vmwareGateway:
-  enabled: true
-  replicas: 1
-  resources:
-    requests:
-      memory: "128Mi"
-      cpu: "100m"
-    limits:
-      memory: "512Mi"
-      cpu: "500m"
-  service:
-    type: ClusterIP
-    port: 80
-    targetPort: 8080
-
-# Matrix Configuration
-matrix:
-  enabled: false  # Set to true if deploying Matrix with this chart
-  serverName: "matrix.npc.svc.cluster.local"

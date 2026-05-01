@@ -1,15 +1,12 @@
-{{- if .Values.controller.enabled }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: controller
-  namespace: {{ .Values.namespace }}
+  namespace: npc
   labels:
     app: controller
-    app.kubernetes.io/name: controller
-    app.kubernetes.io/version: {{ .Values.images.controller.tag | quote }}
 spec:
-  replicas: {{ .Values.controller.replicas }}
+  replicas: 1
   selector:
     matchLabels:
       app: controller
@@ -17,13 +14,10 @@ spec:
     metadata:
       labels:
         app: controller
-        app.kubernetes.io/name: controller
-        app.kubernetes.io/version: {{ .Values.images.controller.tag | quote }}
     spec:
       containers:
       - name: controller
-        image: "{{ .Values.images.controller.repository }}:{{ .Values.images.controller.tag }}"
-        imagePullPolicy: {{ .Values.images.controller.pullPolicy }}
+        image: hattmo/controller:{{ .Values.images.controller.tag }}
         ports:
         - containerPort: 8080
         livenessProbe:
@@ -38,22 +32,21 @@ spec:
             port: 8080
           initialDelaySeconds: 5
           periodSeconds: 5
-        resources: {{- toYaml .Values.controller.resources | nindent 10 }}
         env:
         - name: MATRIX_URL
-          value: {{ .Values.controller.matrix.url | quote }}
+          value: "http://matrix.npc.svc.cluster.local"
         - name: VMWARE_GATEWAY_URL
-          value: {{ .Values.controller.vmwareGateway.url | quote }}
+          value: "http://vmware-gateway.npc.svc.cluster.local"
         - name: MATRIX_SECRET
           valueFrom:
             secretKeyRef:
               name: matrix-shared-secret
               key: shared_secret
         - name: MATRIX_DATA_PATH
-          value: {{ .Values.controller.matrix.dataPath | quote }}
+          value: "/app/matrix-data"
         volumeMounts:
         - name: matrix-data
-          mountPath: {{ .Values.controller.matrix.dataPath }}
+          mountPath: /app/matrix-data
       volumes:
       - name: matrix-data
         persistentVolumeClaim:
@@ -63,27 +56,24 @@ apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: controller-matrix-pvc
-  namespace: {{ .Values.namespace }}
+  namespace: npc
 spec:
   accessModes:
     - ReadWriteOnce
   resources:
     requests:
-      storage: {{ .Values.controller.matrix.storageSize }}
+      storage: 100Mi
 ---
 apiVersion: v1
 kind: Service
 metadata:
   name: controller
-  namespace: {{ .Values.namespace }}
-  labels:
-    app: controller
+  namespace: npc
 spec:
-  type: {{ .Values.controller.service.type }}
+  type: LoadBalancer
   selector:
     app: controller
   ports:
-  - port: {{ .Values.controller.service.port }}
-    targetPort: {{ .Values.controller.service.targetPort }}
+  - port: 80
+    targetPort: 8080
     protocol: TCP
-{{- end }}

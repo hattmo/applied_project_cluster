@@ -1,16 +1,13 @@
-{{- if .Values.agent.enabled }}
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
   name: agent
-  namespace: {{ .Values.namespace }}
+  namespace: npc
   labels:
     app: agent
-    app.kubernetes.io/name: agent
-    app.kubernetes.io/version: {{ .Values.images.openclaw.tag | quote }}
 spec:
   serviceName: agent
-  replicas: {{ .Values.agent.replicas }}
+  replicas: 1
   selector:
     matchLabels:
       app: agent
@@ -18,8 +15,6 @@ spec:
     metadata:
       labels:
         app: agent
-        app.kubernetes.io/name: agent
-        app.kubernetes.io/version: {{ .Values.images.openclaw.tag | quote }}
     spec:
       securityContext:
         fsGroup: 1000
@@ -49,7 +44,7 @@ spec:
           readOnly: true
       containers:
       - name: ollama
-        image: "{{ .Values.agent.ollama.image.repository }}:{{ .Values.agent.ollama.image.tag }}"
+        image: ollama/ollama:latest
         env:
         - name: OLLAMA_API_KEY
           valueFrom:
@@ -57,7 +52,7 @@ spec:
               name: ollama-creds
               key: api-key
         - name: OLLAMA_MODEL
-          value: {{ .Values.agent.ollama.model | quote }}
+          value: "qwen:3.5"
         ports:
         - containerPort: 11434
         livenessProbe:
@@ -72,13 +67,11 @@ spec:
             port: 11434
           initialDelaySeconds: 10
           periodSeconds: 5
-        resources: {{- toYaml .Values.agent.ollama.resources | nindent 10 }}
         volumeMounts:
         - name: ollama-storage
           mountPath: /root/.ollama
       - name: openclaw
-        image: "{{ .Values.images.openclaw.repository }}:{{ .Values.images.openclaw.tag }}"
-        imagePullPolicy: {{ .Values.images.openclaw.pullPolicy }}
+        image: hattmo/openclaw:{{ .Values.images.openclaw.tag }}
         env:
         - name: HOME
           value: /home/node
@@ -100,17 +93,16 @@ spec:
           httpGet:
             path: /healthz
             port: 18789
-          initialDelaySeconds: {{ .Values.agent.openclaw.healthCheck.initialDelaySeconds }}
-          periodSeconds: {{ .Values.agent.openclaw.healthCheck.periodSeconds }}
-          timeoutSeconds: {{ .Values.agent.openclaw.healthCheck.timeoutSeconds }}
+          initialDelaySeconds: 120
+          periodSeconds: 60
+          timeoutSeconds: 20
         readinessProbe:
           httpGet:
             path: /readyz
             port: 18789
-          initialDelaySeconds: {{ .Values.agent.openclaw.healthCheck.initialDelaySeconds }}
-          periodSeconds: {{ .Values.agent.openclaw.healthCheck.periodSeconds }}
-          timeoutSeconds: {{ .Values.agent.openclaw.healthCheck.timeoutSeconds }}
-        resources: {{- toYaml .Values.agent.openclaw.resources | nindent 10 }}
+          initialDelaySeconds: 120
+          periodSeconds: 60
+          timeoutSeconds: 20
       volumes:
       - name: ssh-secret
         secret:
@@ -124,5 +116,4 @@ spec:
         - ReadWriteOnce
       resources:
         requests:
-          storage: {{ .Values.agent.ollama.storageSize }}
-{{- end }}
+          storage: 20Gi
