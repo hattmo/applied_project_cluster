@@ -6,7 +6,6 @@ metadata:
     app: agent
 spec:
   serviceName: agent
-  replicas: 1
   selector:
     matchLabels:
       app: agent
