@@ -72,18 +72,18 @@ jobs:
 
       - name: Check if version tag already exists
         if: github.event_name != 'pull_request'
+        id: check-tag
         run: |
           VERSION=${{ needs.get-versions.outputs.controller-version }}
           if [ "$VERSION" != "latest" ]; then
             if docker manifest inspect ${{ env.REGISTRY }}/hattmo/controller:$VERSION > /dev/null 2>&1; then
-              echo "ERROR: Tag $VERSION already exists and is not 'latest'. Refusing to overwrite."
-              echo "To rebuild an existing version, delete the tag from Docker Hub first."
-              exit 1
+              echo "WARNING: Tag $VERSION already exists. Skipping push to avoid overwrite."
+              echo "To rebuild, delete the tag from Docker Hub or bump version in chart/values.yaml"
+              echo "skip-push=true" >> $GITHUB_OUTPUT
+              exit 0
             fi
-            echo "Tag $VERSION does not exist, proceeding with build"
-          else
-            echo "Tag is 'latest', allowing overwrite"
           fi
+          echo "skip-push=false" >> $GITHUB_OUTPUT
 
       - name: Extract metadata
         id: meta
@@ -98,7 +98,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: ./controller
-          push: ${{ github.event_name != 'pull_request' }}
+          push: ${{ github.event_name != 'pull_request' && steps.check-tag.outputs.skip-push != 'true' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
@@ -128,18 +128,18 @@ jobs:
 
       - name: Check if version tag already exists
         if: github.event_name != 'pull_request'
+        id: check-tag
         run: |
           VERSION=${{ needs.get-versions.outputs.openclaw-version }}
           if [ "$VERSION" != "latest" ]; then
             if docker manifest inspect ${{ env.REGISTRY }}/hattmo/openclaw:$VERSION > /dev/null 2>&1; then
-              echo "ERROR: Tag $VERSION already exists and is not 'latest'. Refusing to overwrite."
-              echo "To rebuild an existing version, delete the tag from Docker Hub first."
-              exit 1
+              echo "WARNING: Tag $VERSION already exists. Skipping push to avoid overwrite."
+              echo "To rebuild, delete the tag from Docker Hub or bump version in chart/values.yaml"
+              echo "skip-push=true" >> $GITHUB_OUTPUT
+              exit 0
             fi
-            echo "Tag $VERSION does not exist, proceeding with build"
-          else
-            echo "Tag is 'latest', allowing overwrite"
           fi
+          echo "skip-push=false" >> $GITHUB_OUTPUT
 
       - name: Extract metadata
         id: meta
@@ -154,7 +154,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: ./openclaw
-          push: ${{ github.event_name != 'pull_request' }}
+          push: ${{ github.event_name != 'pull_request' && steps.check-tag.outputs.skip-push != 'true' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
@@ -184,18 +184,18 @@ jobs:
 
       - name: Check if version tag already exists
         if: github.event_name != 'pull_request'
+        id: check-tag
         run: |
           VERSION=${{ needs.get-versions.outputs.vmware-gateway-version }}
           if [ "$VERSION" != "latest" ]; then
             if docker manifest inspect ${{ env.REGISTRY }}/hattmo/vmware-gateway:$VERSION > /dev/null 2>&1; then
-              echo "ERROR: Tag $VERSION already exists and is not 'latest'. Refusing to overwrite."
-              echo "To rebuild an existing version, delete the tag from Docker Hub first."
-              exit 1
+              echo "WARNING: Tag $VERSION already exists. Skipping push to avoid overwrite."
+              echo "To rebuild, delete the tag from Docker Hub or bump version in chart/values.yaml"
+              echo "skip-push=true" >> $GITHUB_OUTPUT
+              exit 0
             fi
-            echo "Tag $VERSION does not exist, proceeding with build"
-          else
-            echo "Tag is 'latest', allowing overwrite"
           fi
+          echo "skip-push=false" >> $GITHUB_OUTPUT
 
       - name: Extract metadata
         id: meta
@@ -210,7 +210,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: ./vmware_gateway
-          push: ${{ github.event_name != 'pull_request' }}
+          push: ${{ github.event_name != 'pull_request' && steps.check-tag.outputs.skip-push != 'true' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
