@@ -7,7 +7,7 @@ on:
       - 'controller/**'
       - 'openclaw/**'
       - 'vmware_gateway/**'
-      - 'charts/npc/values.yaml'
+      - 'chart/values.yaml'
       - '.github/workflows/build-images.yml'
   pull_request:
     branches: [main]
@@ -31,12 +31,12 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Read versions from charts/values.yaml
+      - name: Read versions from chart/values.yaml
         id: read-versions
         run: |
-          CONTROLLER_VERSION=$(grep -A2 "^  controller:" charts/values.yaml | grep "tag:" | head -1 | awk '{print $2}' | tr -d '"')
-          OPENCLAW_VERSION=$(grep -A2 "^  openclaw:" charts/values.yaml | grep "tag:" | head -1 | awk '{print $2}' | tr -d '"')
-          VMWARE_GATEWAY_VERSION=$(grep -A2 "^  vmwareGateway:" charts/values.yaml | grep "tag:" | head -1 | awk '{print $2}' | tr -d '"')
+          CONTROLLER_VERSION=$(grep -A2 "^  controller:" chart/values.yaml | grep "tag:" | head -1 | awk '{print $2}' | tr -d '"')
+          OPENCLAW_VERSION=$(grep -A2 "^  openclaw:" chart/values.yaml | grep "tag:" | head -1 | awk '{print $2}' | tr -d '"')
+          VMWARE_GATEWAY_VERSION=$(grep -A2 "^  vmwareGateway:" chart/values.yaml | grep "tag:" | head -1 | awk '{print $2}' | tr -d '"')
           
           echo "controller-version=$CONTROLLER_VERSION" >> $GITHUB_OUTPUT
           echo "openclaw-version=$OPENCLAW_VERSION" >> $GITHUB_OUTPUT
