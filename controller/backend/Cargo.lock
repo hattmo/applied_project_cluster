@@ -427,12 +427,12 @@ dependencies = [
  "axum",
  "chrono",
  "hex",
+ "hmac-sha1-compact",
  "matrix-sdk",
  "matrix-sdk-base",
  "reqwest 0.11.27",
  "serde",
  "serde_json",
- "sha2",
  "tokio",
  "tokio-util",
  "tower-http 0.5.2",
@@ -918,6 +918,12 @@ checksum = "6c49c37c09c17a53d937dfbb742eb3a961d65a994e6bcdcf37e7399d0cc8ab5e"
 dependencies = [
  "digest",
 ]
+
+[[package]]
+name = "hmac-sha1-compact"
+version = "1.1.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b0b3ba31f6dc772cc8221ce81dbbbd64fa1e668255a6737d95eeace59b5a8823"
 
 [[package]]
 name = "http"

@@ -186,15 +186,19 @@ async fn create_client(
         .ok_or_else(|| anyhow::anyhow!("No nonce in response"))?;
 
     // Generate signature: sha256(nonce + '\x00' + username + '\x00' + shared_secret)
-    use sha2::{Digest, Sha256};
-    let mut hasher = Sha256::new();
-    hasher.update(nonce);
-    hasher.update([0u8]); // null separator
-    hasher.update(username.as_bytes());
-    hasher.update([0u8]); // null separator
-    hasher.update(shared_secret.as_bytes());
-    let signature = hex::encode(hasher.finalize());
-
+    tracing::debug!(?shared_secret, "Using shared secret");
+    let bytes = [
+        nonce.as_bytes(),
+        b"\0",
+        username.as_bytes(),
+        b"\0",
+        password.as_bytes(),
+        b"\0",
+        b"admin",
+    ];
+    let bytes: Box<[u8]> = bytes.into_iter().flatten().copied().collect();
+    let signature = hmac_sha1_compact::HMAC::mac(&bytes, shared_secret.as_bytes());
+    let signature = hex::encode(signature);
     let register_body = serde_json::json!({
         "nonce": nonce,
         "username": username,
