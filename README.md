@@ -20,6 +20,8 @@ spec:
     repoURL: https://github.com/hattmo/applied_project_cluster.git
     targetRevision: HEAD
     path: system
+    directory:
+      recurse: true
   destination:
     server: https://kubernetes.default.svc
   syncPolicy:
