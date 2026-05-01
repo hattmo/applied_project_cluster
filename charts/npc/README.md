@@ -10,48 +10,74 @@ Helm chart for deploying NPC infrastructure components to Kubernetes.
 
 ## Version Management
 
-Image versions are managed centrally in `versions.yml` at the repo root.
+Image versions are managed in `charts/npc/values.yaml`. This is the **single source of truth** for:
+- Docker image tags (CI/CD reads from here)
+- Kubernetes deployments (Helm uses these values)
 
 ### Updating Versions
 
 ```bash
-# 1. Edit versions.yml
-# Change version numbers in versions.yml
+# 1. Edit charts/npc/values.yaml
+# Change tag values under images section:
+#   images:
+#     controller:
+#       tag: "0.2.0"  # <- Update this
 
-# 2. Sync to Helm values
-./scripts/sync-versions-to-helm.sh
-
-# 3. Commit and push
-git add versions.yml charts/npc/values.yaml
-git commit -m "bump: v0.2.0"
+# 2. Commit and push
+git add charts/npc/values.yaml
+git commit -m "bump: controller v0.2.0"
 git push
 ```
 
 ### CI/CD Flow
 
 1. Push to `main` triggers GitHub Actions
-2. Images built with version tag + `latest`
-3. ArgoCD detects chart changes
-4. ArgoCD deploys new versions to cluster
+2. CI reads versions from `charts/npc/values.yaml`
+3. Images built with version tag + `latest`
+4. ArgoCD detects chart changes
+5. ArgoCD deploys new versions to cluster
 
 ## Installation
 
 ### Via ArgoCD (Recommended)
 
-The `system/npc-app.yaml` defines an ArgoCD Application that automatically syncs this chart.
+Create an ArgoCD Application pointing to this chart:
+
+```yaml
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: npc
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/hattmo/applied_project_cluster.git
+    targetRevision: HEAD
+    path: charts/npc
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: npc
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+```
 
 ### Manual Installation
 
 ```bash
-# Install with default values
+# Install with values from values.yaml
 helm install npc ./charts/npc -n npc --create-namespace
 
-# Override versions
+# Override specific versions
 helm install npc ./charts/npc -n npc --create-namespace \
   --set images.controller.tag=0.2.0 \
   --set images.openclaw.tag=0.2.0
 
-# Dry run
+# Dry run / template rendering
 helm template npc ./charts/npc -n npc
 ```
 
@@ -59,8 +85,11 @@ helm template npc ./charts/npc -n npc
 
 | Parameter | Description | Default |
 |-----------|-------------|---------|
+| `images.controller.repository` | Controller image repo | `hattmo/controller` |
 | `images.controller.tag` | Controller image version | `0.1.0` |
+| `images.openclaw.repository` | OpenClaw image repo | `hattmo/openclaw` |
 | `images.openclaw.tag` | OpenClaw image version | `0.1.0` |
+| `images.vmwareGateway.repository` | VMware Gateway image repo | `hattmo/vmware-gateway` |
 | `images.vmwareGateway.tag` | VMware Gateway image version | `0.1.0` |
 | `namespace` | Target namespace | `npc` |
 | `controller.enabled` | Deploy controller | `true` |
