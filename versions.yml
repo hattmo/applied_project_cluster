@@ -1,0 +1,17 @@
+# Image versions - single source of truth for all components
+# Update version here, and it will propagate to:
+# - Docker image tags (via CI/CD)
+# - Kubernetes manifests (via update-manifests.sh)
+
+images:
+  controller:
+    version: "0.1.0"
+    image: "hattmo/controller"
+    
+  openclaw:
+    version: "0.1.0"
+    image: "hattmo/openclaw"
+    
+  vmware-gateway:
+    version: "0.1.0"
+    image: "hattmo/vmware-gateway"
