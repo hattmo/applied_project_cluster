@@ -68,7 +68,7 @@ spec:
             exit 1
           fi
           echo "Extracting shared_secret from config..."
-          SHARED_SECRET=$(grep -E "^registration_shared_secret:" /data/homeserver.yaml | awk '{print $2}')
+          SHARED_SECRET=$(grep -E "^registration_shared_secret:" /data/homeserver.yaml | awk '{print $2}' | tr -d '"')
           if [ -n "$SHARED_SECRET" ]; then
             echo "Creating/updating matrix-shared-secret..."
             kubectl create secret generic matrix-shared-secret \
