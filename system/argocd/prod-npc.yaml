@@ -9,9 +9,6 @@ spec:
     repoURL: https://github.com/hattmo/applied_project_cluster.git
     targetRevision: HEAD
     path: chart
-    helm:
-      values: |
-        namespace: prod-npc
   destination:
     server: https://kubernetes.default.svc
     namespace: prod-npc

@@ -1,7 +1,5 @@
-# Image versions and namespace
-# CI reads image tags, ArgoCD deploys with these values
-
-namespace: npc
+# Image versions - single source of truth
+# CI reads these tags and builds/pushes images
 
 images:
   controller:
