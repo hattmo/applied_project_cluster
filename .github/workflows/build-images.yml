@@ -7,6 +7,7 @@ on:
       - 'controller/**'
       - 'openclaw/**'
       - 'vmware_gateway/**'
+      - 'versions.yml'
       - '.github/workflows/build-images.yml'
   pull_request:
     branches: [main]
@@ -19,9 +20,37 @@ env:
   REGISTRY: docker.io
 
 jobs:
+  # Read versions from versions.yml
+  get-versions:
+    runs-on: ubuntu-latest
+    outputs:
+      controller-version: ${{ steps.read-versions.outputs.controller-version }}
+      openclaw-version: ${{ steps.read-versions.outputs.openclaw-version }}
+      vmware-gateway-version: ${{ steps.read-versions.outputs.vmware-gateway-version }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Read versions from versions.yml
+        id: read-versions
+        run: |
+          CONTROLLER_VERSION=$(grep -A1 "controller:" versions.yml | grep "version:" | awk '{print $2}' | tr -d '"')
+          OPENCLAW_VERSION=$(grep -A1 "openclaw:" versions.yml | grep "version:" | awk '{print $2}' | tr -d '"')
+          VMWARE_GATEWAY_VERSION=$(grep -A1 "vmware-gateway:" versions.yml | grep "version:" | awk '{print $2}' | tr -d '"')
+          
+          echo "controller-version=$CONTROLLER_VERSION" >> $GITHUB_OUTPUT
+          echo "openclaw-version=$OPENCLAW_VERSION" >> $GITHUB_OUTPUT
+          echo "vmware-gateway-version=$VMWARE_GATEWAY_VERSION" >> $GITHUB_OUTPUT
+          
+          echo "Versions read:"
+          echo "  controller: $CONTROLLER_VERSION"
+          echo "  openclaw: $OPENCLAW_VERSION"
+          echo "  vmware-gateway: $VMWARE_GATEWAY_VERSION"
+
   # Controller Build
   build-controller:
     runs-on: ubuntu-latest
+    needs: get-versions
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     permissions:
       contents: read
@@ -46,11 +75,10 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/hattmo/controller
           tags: |
+            type=raw,value=${{ needs.get-versions.outputs.controller-version }},enable=${{ github.ref == format('refs/heads/{0}', 'main') }}
             type=raw,value=latest,enable=${{ github.ref == format('refs/heads/{0}', 'main') }}
             type=ref,event=branch
             type=ref,event=pr
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
             type=sha,prefix=
 
       - name: Build and push
@@ -66,6 +94,7 @@ jobs:
   # OpenClaw Build
   build-openclaw:
     runs-on: ubuntu-latest
+    needs: get-versions
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     permissions:
       contents: read
@@ -90,11 +119,10 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/hattmo/openclaw
           tags: |
+            type=raw,value=${{ needs.get-versions.outputs.openclaw-version }},enable=${{ github.ref == format('refs/heads/{0}', 'main') }}
             type=raw,value=latest,enable=${{ github.ref == format('refs/heads/{0}', 'main') }}
             type=ref,event=branch
             type=ref,event=pr
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
             type=sha,prefix=
 
       - name: Build and push
@@ -110,6 +138,7 @@ jobs:
   # VMware Gateway Build
   build-vmware-gateway:
     runs-on: ubuntu-latest
+    needs: get-versions
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     permissions:
       contents: read
@@ -134,11 +163,10 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/hattmo/vmware-gateway
           tags: |
+            type=raw,value=${{ needs.get-versions.outputs.vmware-gateway-version }},enable=${{ github.ref == format('refs/heads/{0}', 'main') }}
             type=raw,value=latest,enable=${{ github.ref == format('refs/heads/{0}', 'main') }}
             type=ref,event=branch
             type=ref,event=pr
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
             type=sha,prefix=
 
       - name: Build and push

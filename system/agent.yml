@@ -78,7 +78,7 @@ spec:
         - name: ollama-storage
           mountPath: /root/.ollama
       - name: openclaw
-        image: hattmo/openclaw:latest
+        image: hattmo/openclaw:0.1.0
         env:
         - name: HOME
           value: /home/node
