@@ -8,7 +8,7 @@ spec:
   source:
     repoURL: https://github.com/hattmo/applied_project_cluster.git
     targetRevision: HEAD
-    path: charts
+    path: chart
     helm:
       values: |
         namespace: dev-npc
