@@ -67,7 +67,7 @@ kind: Service
 metadata:
   name: controller
 spec:
-  type: LoadBalancer
+  type: ClusterIP
   selector:
     app: controller
   ports:
