@@ -255,16 +255,11 @@ async fn main() -> anyhow::Result<()> {
 
     // Load environment variables
 
-    let matrix_hostname: &'static str = std::env::var("MATRIX_HOSTNAME")
-        .unwrap_or_else(|_| "matrix.npc.svc.cluster.local".to_string())
-        .leak();
-    let vmware_gateway_hostname: &'static str = std::env::var("VMWARE_GATEWAY_HOSTNAME")
-        .unwrap_or_else(|_| "vmware-gateway.npc.svc.cluster.local".to_string())
-        .leak();
+    let matrix_hostname: &'static str = std::env::var("MATRIX_HOSTNAME")?.leak();
+    let vmware_gateway_hostname: &'static str = std::env::var("VMWARE_GATEWAY_HOSTNAME")?.leak();
 
     let matrix_secret = std::env::var("MATRIX_SECRET")?;
-    let matrix_data_path =
-        std::env::var("MATRIX_DATA_PATH").unwrap_or_else(|_| "/app/matrix-data".to_string());
+    let matrix_data_path = std::env::var("MATRIX_DATA_PATH")?;
 
     // Load or create Matrix credentials
     let (client, username) =
