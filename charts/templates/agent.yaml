@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: StatefulSet
 metadata:
   name: agent
-  namespace: npc
+  namespace: {{ .Values.namespace }}
   labels:
     app: agent
 spec:
