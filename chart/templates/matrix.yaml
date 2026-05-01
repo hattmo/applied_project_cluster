@@ -1,0 +1,135 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: matrix
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: matrix-secret-manager
+rules:
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["create", "get", "update", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: matrix-binding
+subjects:
+- kind: ServiceAccount
+  name: matrix
+roleRef:
+  kind: Role
+  name: matrix-secret-manager
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: matrix
+  labels:
+    app: matrix
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: matrix
+  template:
+    metadata:
+      labels:
+        app: matrix
+    spec:
+      serviceAccountName: matrix
+      initContainers:
+      - name: setup-synapse
+        image: matrixdotorg/synapse:latest
+        volumeMounts:
+        - name: matrix-data
+          mountPath: /data
+        env:
+        - name: "SYNAPSE_SERVER_NAME"
+          value: "matrix.npc.svc.cluster.local"
+        - name: "SYNAPSE_REPORT_STATS"
+          value: "no"
+        args:
+        - "generate"
+      - name: create-shared-secret
+        image: bitnami/kubectl:latest
+        volumeMounts:
+        - name: matrix-data
+          mountPath: /data
+        command:
+        - "/bin/sh"
+        - "-c"
+        - |
+          if [ ! -f /data/homeserver.yaml ]; then
+            echo "ERROR: homeserver.yaml not found, synapse init failed"
+            exit 1
+          fi
+          echo "Extracting shared_secret from config..."
+          SHARED_SECRET=$(grep -E "^registration_shared_secret:" /data/homeserver.yaml | awk '{print $2}')
+          if [ -n "$SHARED_SECRET" ]; then
+            echo "Creating/updating Kubernetes secret with shared_secret..."
+            kubectl create secret generic matrix-shared-secret \
+              --from-literal=shared_secret="$SHARED_SECRET" \
+              --dry-run=client -o yaml | kubectl apply -f -
+            echo "Secret created/updated successfully"
+          else
+            echo "ERROR: Could not find registration_shared_secret in config"
+            exit 1
+          fi
+      containers:
+      - name: synapse
+        image: matrixdotorg/synapse:latest
+        ports:
+        - containerPort: 8008
+        livenessProbe:
+          httpGet:
+            path: /_matrix/client/versions
+            port: 8008
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /_matrix/client/versions
+            port: 8008
+          initialDelaySeconds: 10
+          periodSeconds: 5
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "2Gi"
+            cpu: "1000m"
+        volumeMounts:
+        - name: matrix-data
+          mountPath: /data
+      volumes:
+      - name: matrix-data
+        persistentVolumeClaim:
+          claimName: matrix-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: matrix
+spec:
+  type: ClusterIP
+  selector:
+    app: matrix
+  ports:
+  - port: 80
+    targetPort: 8008
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: matrix-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
