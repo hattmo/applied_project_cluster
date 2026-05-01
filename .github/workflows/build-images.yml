@@ -35,25 +35,15 @@ jobs:
       - name: Read versions from chart/values.yaml
         id: read-versions
         run: |
-          BASE_VERSION=$(grep -A2 "^  controller:" chart/values.yaml | grep "tag:" | head -1 | awk '{print $2}' | tr -d '"')
-          
-          # Dev branch adds -dev suffix to avoid conflicting with main
-          if [ "${{ github.ref }}" == "refs/heads/dev" ]; then
-            CONTROLLER_VERSION="${BASE_VERSION}-dev"
-            OPENCLAW_VERSION="${BASE_VERSION}-dev"
-            VMWARE_GATEWAY_VERSION="${BASE_VERSION}-dev"
-            echo "Dev branch detected, adding -dev suffix to version tags"
-          else
-            CONTROLLER_VERSION=$BASE_VERSION
-            OPENCLAW_VERSION=$BASE_VERSION
-            VMWARE_GATEWAY_VERSION=$BASE_VERSION
-          fi
+          CONTROLLER_VERSION=$(grep -A2 "^  controller:" chart/values.yaml | grep "tag:" | head -1 | awk '{print $2}' | tr -d '"')
+          OPENCLAW_VERSION=$(grep -A2 "^  openclaw:" chart/values.yaml | grep "tag:" | head -1 | awk '{print $2}' | tr -d '"')
+          VMWARE_GATEWAY_VERSION=$(grep -A2 "^  vmwareGateway:" chart/values.yaml | grep "tag:" | head -1 | awk '{print $2}' | tr -d '"')
           
           echo "controller-version=$CONTROLLER_VERSION" >> $GITHUB_OUTPUT
           echo "openclaw-version=$OPENCLAW_VERSION" >> $GITHUB_OUTPUT
           echo "vmware-gateway-version=$VMWARE_GATEWAY_VERSION" >> $GITHUB_OUTPUT
           
-          echo "Versions:"
+          echo "Versions read from chart/values.yaml:"
           echo "  controller: $CONTROLLER_VERSION"
           echo "  openclaw: $OPENCLAW_VERSION"
           echo "  vmware-gateway: $VMWARE_GATEWAY_VERSION"
@@ -103,8 +93,6 @@ jobs:
           tags: |
             type=raw,value=${{ needs.get-versions.outputs.controller-version }}
             type=raw,value=latest,enable=${{ github.ref == format('refs/heads/{0}', 'main') }}
-            type=ref,event=branch,enable=${{ github.ref != format('refs/heads/{0}', 'main') }}
-            type=sha,prefix=,enable=${{ github.ref != format('refs/heads/{0}', 'main') }}
 
       - name: Build and push
         uses: docker/build-push-action@v5
@@ -161,8 +149,6 @@ jobs:
           tags: |
             type=raw,value=${{ needs.get-versions.outputs.openclaw-version }}
             type=raw,value=latest,enable=${{ github.ref == format('refs/heads/{0}', 'main') }}
-            type=ref,event=branch,enable=${{ github.ref != format('refs/heads/{0}', 'main') }}
-            type=sha,prefix=,enable=${{ github.ref != format('refs/heads/{0}', 'main') }}
 
       - name: Build and push
         uses: docker/build-push-action@v5
@@ -219,8 +205,6 @@ jobs:
           tags: |
             type=raw,value=${{ needs.get-versions.outputs.vmware-gateway-version }}
             type=raw,value=latest,enable=${{ github.ref == format('refs/heads/{0}', 'main') }}
-            type=ref,event=branch,enable=${{ github.ref != format('refs/heads/{0}', 'main') }}
-            type=sha,prefix=,enable=${{ github.ref != format('refs/heads/{0}', 'main') }}
 
       - name: Build and push
         uses: docker/build-push-action@v5
