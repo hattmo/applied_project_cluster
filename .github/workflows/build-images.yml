@@ -70,6 +70,21 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_TOKEN }}
 
+      - name: Check if version tag already exists
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        run: |
+          VERSION=${{ needs.get-versions.outputs.controller-version }}
+          if [ "$VERSION" != "latest" ]; then
+            if docker manifest inspect ${{ env.REGISTRY }}/hattmo/controller:$VERSION > /dev/null 2>&1; then
+              echo "ERROR: Tag $VERSION already exists and is not 'latest'. Refusing to overwrite."
+              echo "To rebuild an existing version, delete the tag from Docker Hub first."
+              exit 1
+            fi
+            echo "Tag $VERSION does not exist, proceeding with build"
+          else
+            echo "Tag is 'latest', allowing overwrite"
+          fi
+
       - name: Extract metadata
         id: meta
         uses: docker/metadata-action@v5
@@ -114,6 +129,21 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_TOKEN }}
 
+      - name: Check if version tag already exists
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        run: |
+          VERSION=${{ needs.get-versions.outputs.openclaw-version }}
+          if [ "$VERSION" != "latest" ]; then
+            if docker manifest inspect ${{ env.REGISTRY }}/hattmo/openclaw:$VERSION > /dev/null 2>&1; then
+              echo "ERROR: Tag $VERSION already exists and is not 'latest'. Refusing to overwrite."
+              echo "To rebuild an existing version, delete the tag from Docker Hub first."
+              exit 1
+            fi
+            echo "Tag $VERSION does not exist, proceeding with build"
+          else
+            echo "Tag is 'latest', allowing overwrite"
+          fi
+
       - name: Extract metadata
         id: meta
         uses: docker/metadata-action@v5
@@ -157,6 +187,21 @@ jobs:
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_TOKEN }}
+
+      - name: Check if version tag already exists
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        run: |
+          VERSION=${{ needs.get-versions.outputs.vmware-gateway-version }}
+          if [ "$VERSION" != "latest" ]; then
+            if docker manifest inspect ${{ env.REGISTRY }}/hattmo/vmware-gateway:$VERSION > /dev/null 2>&1; then
+              echo "ERROR: Tag $VERSION already exists and is not 'latest'. Refusing to overwrite."
+              echo "To rebuild an existing version, delete the tag from Docker Hub first."
+              exit 1
+            fi
+            echo "Tag $VERSION does not exist, proceeding with build"
+          else
+            echo "Tag is 'latest', allowing overwrite"
+          fi
 
       - name: Extract metadata
         id: meta
