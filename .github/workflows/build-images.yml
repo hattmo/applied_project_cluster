@@ -35,15 +35,25 @@ jobs:
       - name: Read versions from chart/values.yaml
         id: read-versions
         run: |
-          CONTROLLER_VERSION=$(grep -A2 "^  controller:" chart/values.yaml | grep "tag:" | head -1 | awk '{print $2}' | tr -d '"')
-          OPENCLAW_VERSION=$(grep -A2 "^  openclaw:" chart/values.yaml | grep "tag:" | head -1 | awk '{print $2}' | tr -d '"')
-          VMWARE_GATEWAY_VERSION=$(grep -A2 "^  vmwareGateway:" chart/values.yaml | grep "tag:" | head -1 | awk '{print $2}' | tr -d '"')
+          BASE_VERSION=$(grep -A2 "^  controller:" chart/values.yaml | grep "tag:" | head -1 | awk '{print $2}' | tr -d '"')
+          
+          # Dev branch adds -dev suffix to avoid conflicting with main
+          if [ "${{ github.ref }}" == "refs/heads/dev" ]; then
+            CONTROLLER_VERSION="${BASE_VERSION}-dev"
+            OPENCLAW_VERSION="${BASE_VERSION}-dev"
+            VMWARE_GATEWAY_VERSION="${BASE_VERSION}-dev"
+            echo "Dev branch detected, adding -dev suffix to version tags"
+          else
+            CONTROLLER_VERSION=$BASE_VERSION
+            OPENCLAW_VERSION=$BASE_VERSION
+            VMWARE_GATEWAY_VERSION=$BASE_VERSION
+          fi
           
           echo "controller-version=$CONTROLLER_VERSION" >> $GITHUB_OUTPUT
           echo "openclaw-version=$OPENCLAW_VERSION" >> $GITHUB_OUTPUT
           echo "vmware-gateway-version=$VMWARE_GATEWAY_VERSION" >> $GITHUB_OUTPUT
           
-          echo "Versions read from charts/npc/values.yaml:"
+          echo "Versions:"
           echo "  controller: $CONTROLLER_VERSION"
           echo "  openclaw: $OPENCLAW_VERSION"
           echo "  vmware-gateway: $VMWARE_GATEWAY_VERSION"
@@ -71,7 +81,7 @@ jobs:
           password: ${{ secrets.DOCKER_TOKEN }}
 
       - name: Check if version tag already exists
-        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        if: github.event_name != 'pull_request'
         run: |
           VERSION=${{ needs.get-versions.outputs.controller-version }}
           if [ "$VERSION" != "latest" ]; then
@@ -91,11 +101,10 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/hattmo/controller
           tags: |
-            type=raw,value=${{ needs.get-versions.outputs.controller-version }},enable=${{ github.ref == format('refs/heads/{0}', 'main') }}
+            type=raw,value=${{ needs.get-versions.outputs.controller-version }}
             type=raw,value=latest,enable=${{ github.ref == format('refs/heads/{0}', 'main') }}
-            type=ref,event=branch
-            type=ref,event=pr
-            type=sha,prefix=
+            type=ref,event=branch,enable=${{ github.ref != format('refs/heads/{0}', 'main') }}
+            type=sha,prefix=,enable=${{ github.ref != format('refs/heads/{0}', 'main') }}
 
       - name: Build and push
         uses: docker/build-push-action@v5
@@ -130,7 +139,7 @@ jobs:
           password: ${{ secrets.DOCKER_TOKEN }}
 
       - name: Check if version tag already exists
-        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        if: github.event_name != 'pull_request'
         run: |
           VERSION=${{ needs.get-versions.outputs.openclaw-version }}
           if [ "$VERSION" != "latest" ]; then
@@ -150,11 +159,10 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/hattmo/openclaw
           tags: |
-            type=raw,value=${{ needs.get-versions.outputs.openclaw-version }},enable=${{ github.ref == format('refs/heads/{0}', 'main') }}
+            type=raw,value=${{ needs.get-versions.outputs.openclaw-version }}
             type=raw,value=latest,enable=${{ github.ref == format('refs/heads/{0}', 'main') }}
-            type=ref,event=branch
-            type=ref,event=pr
-            type=sha,prefix=
+            type=ref,event=branch,enable=${{ github.ref != format('refs/heads/{0}', 'main') }}
+            type=sha,prefix=,enable=${{ github.ref != format('refs/heads/{0}', 'main') }}
 
       - name: Build and push
         uses: docker/build-push-action@v5
@@ -189,7 +197,7 @@ jobs:
           password: ${{ secrets.DOCKER_TOKEN }}
 
       - name: Check if version tag already exists
-        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        if: github.event_name != 'pull_request'
         run: |
           VERSION=${{ needs.get-versions.outputs.vmware-gateway-version }}
           if [ "$VERSION" != "latest" ]; then
@@ -209,11 +217,10 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/hattmo/vmware-gateway
           tags: |
-            type=raw,value=${{ needs.get-versions.outputs.vmware-gateway-version }},enable=${{ github.ref == format('refs/heads/{0}', 'main') }}
+            type=raw,value=${{ needs.get-versions.outputs.vmware-gateway-version }}
             type=raw,value=latest,enable=${{ github.ref == format('refs/heads/{0}', 'main') }}
-            type=ref,event=branch
-            type=ref,event=pr
-            type=sha,prefix=
+            type=ref,event=branch,enable=${{ github.ref != format('refs/heads/{0}', 'main') }}
+            type=sha,prefix=,enable=${{ github.ref != format('refs/heads/{0}', 'main') }}
 
       - name: Build and push
         uses: docker/build-push-action@v5
