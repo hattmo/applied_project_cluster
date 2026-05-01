@@ -70,11 +70,11 @@ spec:
           echo "Extracting shared_secret from config..."
           SHARED_SECRET=$(grep -E "^registration_shared_secret:" /data/homeserver.yaml | awk '{print $2}')
           if [ -n "$SHARED_SECRET" ]; then
-            echo "Creating/updating Kubernetes secret with shared_secret..."
-            kubectl create secret generic matrix-shared-secret \
-              --from-literal=shared_secret="$SHARED_SECRET" \
+            echo "Updating creds secret with matrix-shared-secret..."
+            kubectl patch secret creds \
+              -p "{\"stringData\":{\"matrix-shared-secret\":\"$SHARED_SECRET\"}}" \
               --dry-run=client -o yaml | kubectl apply -f -
-            echo "Secret created/updated successfully"
+            echo "Secret updated successfully"
           else
             echo "ERROR: Could not find registration_shared_secret in config"
             exit 1

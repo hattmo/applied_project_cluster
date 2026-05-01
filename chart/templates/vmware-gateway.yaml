@@ -19,7 +19,7 @@ spec:
         image: hattmo/vmware-gateway:{{ .Values.images.vmwareGateway.tag }}
         envFrom:
         - secretRef:
-            name: vmware-creds
+            name: creds
         livenessProbe:
           httpGet:
             path: /
