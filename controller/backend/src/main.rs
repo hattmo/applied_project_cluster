@@ -152,6 +152,8 @@ async fn create_client(
             return Ok((client, creds.username.clone().leak()));
         }
         tracing::warn!("Existing Matrix credentials are invalid, will create new account");
+    } else {
+        tracing::warn!("No esixting Matrix credentials");
     }
 
     // Create new account using shared secret
@@ -165,7 +167,7 @@ async fn create_client(
         .timeout(Duration::from_secs(30))
         .build()?;
 
-    let register_url = format!("{}/_matrix/client/r0/admin/register", matrix_url);
+    let register_url = format!("http://{}/_matrix/client/r0/admin/register", matrix_url);
 
     // Generate nonce first
     let nonce_response = http_client
@@ -404,7 +406,7 @@ async fn list_agents(State(state): State<AppState>) -> Json<Box<[MatrixUser]>> {
 
 // VMware VM handlers
 async fn list_vms(State(state): State<AppState>) -> Result<Json<Vec<String>>, StatusCode> {
-    let url = format!("https://{}/api/vms", state.vmware_gateway_hostname);
+    let url = format!("http://{}/api/vms", state.vmware_gateway_hostname);
 
     let response = state.http_client.get(&url).send().await.map_err(|e| {
         tracing::error!("Failed to fetch VMs from vmware_gateway: {}", e);
