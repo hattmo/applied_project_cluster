@@ -1,0 +1,17 @@
+# External LoadBalancer for Controller
+# Apply this separately to expose controller externally
+# This is kept outside the Helm chart for environment-specific configuration
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: controller-lb
+  namespace: npc-dev
+spec:
+  type: LoadBalancer
+  selector:
+    app: controller
+  ports:
+  - port: 80
+    targetPort: 8080
+    protocol: TCP
