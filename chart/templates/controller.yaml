@@ -39,8 +39,8 @@ spec:
         - name: MATRIX_SECRET
           valueFrom:
             secretKeyRef:
-              name: matrix-shared-secret
-              key: shared_secret
+              name: creds
+              key: matrix-shared-secret
         - name: MATRIX_DATA_PATH
           value: "/app/matrix-data"
         volumeMounts:
