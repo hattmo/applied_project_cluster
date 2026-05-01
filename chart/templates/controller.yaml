@@ -41,26 +41,11 @@ spec:
             secretKeyRef:
               name: matrix-shared-secret
               key: shared_secret
-        - name: MATRIX_DATA_PATH
-          value: "/app/matrix-data"
-        volumeMounts:
-        - name: matrix-data
-          mountPath: /app/matrix-data
-      volumes:
-      - name: matrix-data
-        persistentVolumeClaim:
-          claimName: controller-matrix-pvc
----
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: controller-matrix-pvc
-spec:
-  accessModes:
-    - ReadWriteOnce
-  resources:
-    requests:
-      storage: 100Mi
+        - name: MATRIX_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: creds
+              key: controller-matrix-password
 ---
 apiVersion: v1
 kind: Service

@@ -17,6 +17,12 @@ use tokio_util::sync::CancellationToken;
 use tower_http::{cors::CorsLayer, services::ServeDir, trace::TraceLayer};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
+#[derive(Debug, Deserialize)]
+struct MatrixError {
+    errcode: String,
+    error: String,
+}
+
 #[derive(Clone)]
 struct AppState {
     version: &'static str,
@@ -121,56 +127,32 @@ struct MatrixCredentials {
 }
 
 async fn create_client(
-    data_path: &str,
     matrix_hostname: &str,
     shared_secret: &str,
+    password: &str,
 ) -> anyhow::Result<(Client, &'static str)> {
-    use std::fs;
-    use std::path::Path;
+    let username = "controller";
+    let client = Client::builder()
+        .server_name(&ServerName::parse(matrix_hostname)?)
+        .build()
+        .await?;
+    let test_result = client
+        .matrix_auth()
+        .login_username(username, password)
+        .send()
+        .await;
 
-    let creds_path = Path::new(data_path).join("matrix_credentials.json");
-
-    // Try to load existing credentials
-    if creds_path.exists() {
-        tracing::info!("Loading existing Matrix credentials from {:?}", creds_path);
-        let content = fs::read_to_string(&creds_path)?;
-        let creds: MatrixCredentials = serde_json::from_str(&content)?;
-
-        // Test if credentials work by attempting a login
-        let client = Client::builder()
-            .server_name(&ServerName::parse("matrix.npc.svc.cluster.local")?)
-            .build()
-            .await?;
-        let test_result = client
-            .matrix_auth()
-            .login_username(&creds.username, &creds.password)
-            .send()
-            .await;
-
-        if test_result.is_ok() {
-            tracing::info!("Existing Matrix credentials are valid");
-            return Ok((client, creds.username.clone().leak()));
-        }
-        tracing::warn!("Existing Matrix credentials are invalid, will create new account");
-    } else {
-        tracing::warn!("No esixting Matrix credentials");
+    if test_result.is_ok() {
+        tracing::info!("Existing Matrix credentials are valid");
+        return Ok((client, username));
     }
-
-    // Create new account using shared secret
-    tracing::info!("Creating new Matrix account using shared secret...");
-
-    let username = "controller".to_owned();
-    let password = uuid::Uuid::new_v4().to_string();
-    // let user_id = format!("@{}:matrix.npc.svc.cluster.local", username);
+    tracing::warn!("Matrix credentials are invalid, Creating account");
 
     let http_client = HttpClient::builder()
         .timeout(Duration::from_secs(30))
         .build()?;
-
-    // Synapse admin registration endpoint (not the client r0 API)
     let register_url = format!("http://{}/_synapse/admin/v1/register", matrix_hostname);
 
-    // Generate nonce first
     let nonce_response = http_client
         .get(&register_url)
         .send()
@@ -185,8 +167,7 @@ async fn create_client(
         .and_then(|v| v.as_str())
         .ok_or_else(|| anyhow::anyhow!("No nonce in response"))?;
 
-    // Generate signature: sha256(nonce + '\x00' + username + '\x00' + shared_secret)
-    tracing::debug!(?shared_secret, "Using shared secret");
+    tracing::debug!(?shared_secret, %username, %password, "Creating new user");
     let bytes = [
         nonce.as_bytes(),
         b"\0",
@@ -214,35 +195,20 @@ async fn create_client(
         .await?;
 
     if !response.status().is_success() {
-        let error = response.text().await?;
-        anyhow::bail!("Registration failed: {}", error);
+        let response_json: MatrixError = response.json().await?;
+        tracing::info!(response = ?response_json, "Failed to create account");
+        anyhow::bail!("Failed to setup client")
     }
 
     tracing::info!("Matrix account created successfully: {}", username);
 
-    // Save credentials
-
-    fs::create_dir_all(data_path)?;
-    fs::write(
-        &creds_path,
-        serde_json::to_string_pretty(&MatrixCredentials {
-            username: username.clone(),
-            password: password.clone(),
-        })?,
-    )?;
-    tracing::info!("Credentials saved to {:?}", creds_path);
-
-    let client = Client::builder()
-        .server_name(&ServerName::parse("matrix.npc.svc.cluster.local")?)
-        .build()
-        .await?;
     client
         .matrix_auth()
         .login_username(&username, &password)
         .send()
         .await?;
 
-    Ok((client, username.leak()))
+    Ok((client, username))
 }
 
 #[tokio::main]
@@ -263,11 +229,11 @@ async fn main() -> anyhow::Result<()> {
     let vmware_gateway_hostname: &'static str = std::env::var("VMWARE_GATEWAY_HOSTNAME")?.leak();
 
     let matrix_secret = std::env::var("MATRIX_SECRET")?;
-    let matrix_data_path = std::env::var("MATRIX_DATA_PATH")?;
+    let matrix_password = std::env::var("MATRIX_PASSWORD")?;
 
     // Load or create Matrix credentials
     let (client, username) =
-        create_client(&matrix_data_path, matrix_hostname, &matrix_secret).await?;
+        create_client(matrix_hostname, &matrix_secret, &matrix_password).await?;
 
     let owned_room_id = RoomOrAliasId::parse("#agent_room:{matrix_hostname}")?;
     let owned_server_name = ServerName::parse(matrix_hostname)?;

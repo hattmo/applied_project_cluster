@@ -17,9 +17,33 @@ spec:
       containers:
       - name: app
         image: hattmo/vmware-gateway:{{ .Values.images.vmwareGateway.tag }}
-        envFrom:
-        - secretRef:
-            name: creds
+        env:
+        - name: VC_HOSTNAME
+          valueFrom:
+            secretKeyRef:
+              name: creds
+              key: vcenter-hostname
+        - name: VC_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: creds
+              key: vcenter-username
+        - name: VC_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: creds
+              key: vcenter-password
+        - name: VC_PORT
+          valueFrom:
+            secretKeyRef:
+              name: creds
+              key: vcenter-port
+        - name: VM_WHITE_LIST
+          valueFrom:
+            secretKeyRef:
+              name: creds
+              key: vcenter-white-list
+
         livenessProbe:
           httpGet:
             path: /

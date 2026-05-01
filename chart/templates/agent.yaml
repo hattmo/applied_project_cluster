@@ -5,6 +5,7 @@ metadata:
   labels:
     app: agent
 spec:
+  strategy: Recreate
   serviceName: agent
   selector:
     matchLabels:

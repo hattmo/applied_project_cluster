@@ -151,11 +151,11 @@ shifted_chars = {
 
 class VM_Connection:
     def __init__(self, vm_name: str):
-        host = os.environ.get("VC_HOST")
-        un = os.environ.get("VC_USER")
-        pw = os.environ.get("VC_PASS")
+        host = os.environ.get("VC_HOSTNAME")
+        un = os.environ.get("VC_USERNAME")
+        pw = os.environ.get("VC_PASSWORD")
         if not host or not un or not pw:
-            raise Exception("VC_HOST, VC_USER, and VC_PASS not set")
+            raise Exception("VC_HOSTNAME, VC_USERNAME, and VC_PASSWORD not set")
         try:
             port = int(os.environ.get("VC_PORT", "443"))
         except ValueError:
@@ -433,7 +433,7 @@ class VM_Connection:
         rel_path = datastore_path.split("] ")[1].lstrip("/")
 
         # Build download URL
-        host = os.environ.get("VC_HOST")
+        host = os.environ.get("VC_HOSTNAME")
         resource = f"/folder/{rel_path}"
         params = {"dsName": ds_name, "dcPath": datacenter.name}
         base = f"https://{host}:443"
@@ -527,9 +527,9 @@ def get_screen(vm: str):
 @app.route("/api/vms")
 def list_vms():
     """List all VMs in vSphere that pass the whitelist regex."""
-    host = os.environ.get("VC_HOST")
-    un = os.environ.get("VC_USER")
-    pw = os.environ.get("VC_PASS")
+    host = os.environ.get("VC_HOSTNAME")
+    un = os.environ.get("VC_USERNAME")
+    pw = os.environ.get("VC_PASSWORD")
     if not host or not un or not pw:
         return "VMware credentials not configured", 500
     
