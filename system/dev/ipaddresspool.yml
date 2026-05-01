@@ -1,7 +1,7 @@
 apiVersion: metallb.io/v1beta1
 kind: IPAddressPool
 metadata:
-  name: dev-pool
+  name: npc-dev-pool
   namespace: metallb-system
 spec:
   addresses:
@@ -9,13 +9,13 @@ spec:
   autoAssign: true
   namespaceSelectors:
   - matchLabels:
-      kubernetes.io/metadata.name: dev-npc
+      kubernetes.io/metadata.name: npc-dev
 ---
 apiVersion: metallb.io/v1beta1
 kind: L2Advertisement
 metadata:
-  name: dev-advertisement
+  name: npc-dev-advertisement
   namespace: metallb-system
 spec:
   ipAddressPools:
-  - dev-pool
+  - npc-dev-pool
