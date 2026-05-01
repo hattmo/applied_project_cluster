@@ -7,7 +7,7 @@ spec:
   project: default
   source:
     repoURL: https://github.com/hattmo/applied_project_cluster.git
-    targetRevision: HEAD
+    targetRevision: dev
     path: chart
   destination:
     server: https://kubernetes.default.svc
