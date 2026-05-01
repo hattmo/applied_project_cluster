@@ -1,0 +1,59 @@
+{{- if .Values.vmwareGateway.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vmware-gateway
+  namespace: {{ .Values.namespace }}
+  labels:
+    app: vmware
+    app.kubernetes.io/name: vmware-gateway
+    app.kubernetes.io/version: {{ .Values.images.vmwareGateway.tag | quote }}
+spec:
+  replicas: {{ .Values.vmwareGateway.replicas }}
+  selector:
+    matchLabels:
+      app: vmware
+  template:
+    metadata:
+      labels:
+        app: vmware
+        app.kubernetes.io/name: vmware-gateway
+        app.kubernetes.io/version: {{ .Values.images.vmwareGateway.tag | quote }}
+    spec:
+      containers:
+      - name: app
+        image: "{{ .Values.images.vmwareGateway.repository }}:{{ .Values.images.vmwareGateway.tag }}"
+        imagePullPolicy: {{ .Values.images.vmwareGateway.pullPolicy }}
+        envFrom:
+        - secretRef:
+            name: vmware-creds
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        resources: {{- toYaml .Values.vmwareGateway.resources | nindent 10 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vmware-gateway
+  namespace: {{ .Values.namespace }}
+  labels:
+    app: vmware
+spec:
+  type: {{ .Values.vmwareGateway.service.type }}
+  selector:
+    app: vmware
+  ports:
+  - port: {{ .Values.vmwareGateway.service.port }}
+    targetPort: {{ .Values.vmwareGateway.service.targetPort }}
+    protocol: TCP
+{{- end }}

@@ -1,0 +1,128 @@
+{{- if .Values.agent.enabled }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: agent
+  namespace: {{ .Values.namespace }}
+  labels:
+    app: agent
+    app.kubernetes.io/name: agent
+    app.kubernetes.io/version: {{ .Values.images.openclaw.tag | quote }}
+spec:
+  serviceName: agent
+  replicas: {{ .Values.agent.replicas }}
+  selector:
+    matchLabels:
+      app: agent
+  template:
+    metadata:
+      labels:
+        app: agent
+        app.kubernetes.io/name: agent
+        app.kubernetes.io/version: {{ .Values.images.openclaw.tag | quote }}
+    spec:
+      securityContext:
+        fsGroup: 1000
+      initContainers:
+      - name: init-ssh-keys
+        image: busybox:latest
+        command:
+        - sh
+        - -c
+        - |
+          if [ ! -f /root/.ollama/id_ed25519 ] || [ ! -f /root/.ollama/id_ed25519.pub ]; then
+            echo "SSH keys not found, copying from secret..."
+            mkdir -p /root/.ollama
+            cp /ssh-secret/id_ed25519 /root/.ollama/id_ed25519
+            cp /ssh-secret/id_ed25519.pub /root/.ollama/id_ed25519.pub
+            chmod 600 /root/.ollama/id_ed25519
+            chmod 644 /root/.ollama/id_ed25519.pub
+            echo "SSH keys installed"
+          else
+            echo "SSH keys already exist, skipping"
+          fi
+        volumeMounts:
+        - name: ollama-storage
+          mountPath: /root/.ollama
+        - name: ssh-secret
+          mountPath: /ssh-secret
+          readOnly: true
+      containers:
+      - name: ollama
+        image: "{{ .Values.agent.ollama.image.repository }}:{{ .Values.agent.ollama.image.tag }}"
+        env:
+        - name: OLLAMA_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: ollama-creds
+              key: api-key
+        - name: OLLAMA_MODEL
+          value: {{ .Values.agent.ollama.model | quote }}
+        ports:
+        - containerPort: 11434
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 11434
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 11434
+          initialDelaySeconds: 10
+          periodSeconds: 5
+        resources: {{- toYaml .Values.agent.ollama.resources | nindent 10 }}
+        volumeMounts:
+        - name: ollama-storage
+          mountPath: /root/.ollama
+      - name: openclaw
+        image: "{{ .Values.images.openclaw.repository }}:{{ .Values.images.openclaw.tag }}"
+        imagePullPolicy: {{ .Values.images.openclaw.pullPolicy }}
+        env:
+        - name: HOME
+          value: /home/node
+        - name: TZ
+          value: UTC
+        - name: MATRIX_USER
+          valueFrom:
+            secretKeyRef:
+              name: agent-matrix-creds
+              key: user
+        - name: MATRIX_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: agent-matrix-creds
+              key: password
+        ports:
+        - containerPort: 18789
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 18789
+          initialDelaySeconds: {{ .Values.agent.openclaw.healthCheck.initialDelaySeconds }}
+          periodSeconds: {{ .Values.agent.openclaw.healthCheck.periodSeconds }}
+          timeoutSeconds: {{ .Values.agent.openclaw.healthCheck.timeoutSeconds }}
+        readinessProbe:
+          httpGet:
+            path: /readyz
+            port: 18789
+          initialDelaySeconds: {{ .Values.agent.openclaw.healthCheck.initialDelaySeconds }}
+          periodSeconds: {{ .Values.agent.openclaw.healthCheck.periodSeconds }}
+          timeoutSeconds: {{ .Values.agent.openclaw.healthCheck.timeoutSeconds }}
+        resources: {{- toYaml .Values.agent.openclaw.resources | nindent 10 }}
+      volumes:
+      - name: ssh-secret
+        secret:
+          secretName: ollama-ssh-keys
+          defaultMode: 0600
+  volumeClaimTemplates:
+  - metadata:
+      name: ollama-storage
+    spec:
+      accessModes:
+        - ReadWriteOnce
+      resources:
+        requests:
+          storage: {{ .Values.agent.ollama.storageSize }}
+{{- end }}
