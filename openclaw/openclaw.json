@@ -9,6 +9,9 @@
 	},
 	"channels": {
 		"matrix": {
+			"network": {
+			  "dangerouslyAllowPrivateNetwork": true
+			},
 			"enabled": true,
 			"homeserver": "https://${MATRIX_HOSTNAME}",
 			"userId": "agent_${INDEX}",
