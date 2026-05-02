@@ -19,7 +19,7 @@ matrix-sdk = { version = "0.9", default-features = false, features = ["rustls-tl
 matrix-sdk-base = { version = "0.9", default-features = false }
 anyhow = "1"
 tokio-util = "0.7.18"
-reqwest = { version = "0.11", features = ["json", "rustls-tls"], default-features = false }
+reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
 hex = "0.4"
 hmac-sha1-compact = "1.1.7"
 

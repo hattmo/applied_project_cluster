@@ -6,7 +6,7 @@ use axum::{
     routing::{delete, get, post, put},
 };
 use matrix_sdk::{
-    Client, ClientBuildError, OwnedServerName, RoomMemberships, ServerName,
+    Client, OwnedServerName, RoomMemberships, ServerName,
     ruma::{OwnedRoomOrAliasId, RoomOrAliasId},
 };
 use reqwest::Client as HttpClient;
@@ -126,30 +126,26 @@ async fn create_client(
     matrix_hostname: &str,
     shared_secret: &str,
     password: &str,
-) -> anyhow::Result<(Client, &'static str)> {
+) -> anyhow::Result<(Client, HttpClient, &'static str)> {
     let username = "controller";
-    
-    // Build client with CA certificate if available
-    let mut client_builder = Client::builder()
-        .server_name(&ServerName::parse(matrix_hostname)?);
-    
-    // Load CA certificate from env var if set
-    if let Ok(ca_cert_path) = std::env::var("MATRIX_CA_CERT") {
-        if std::path::Path::new(&ca_cert_path).exists() {
-            tracing::info!("Loading CA certificate from {}", ca_cert_path);
-            let ca_cert_pem = fs::read(&ca_cert_path)?;
-            if let Ok(ca_cert) = reqwest::Certificate::from_pem(&ca_cert_pem) {
-                client_builder = client_builder.add_root_certificate(ca_cert);
-                tracing::info!("CA certificate loaded, SSL verification enabled");
-            }
-        }
-    } else {
-        // Fallback: disable SSL verification (dev only)
-        tracing::warn!("MATRIX_CA_CERT not set, disabling SSL verification");
-        client_builder = client_builder.disable_ssl_verification();
-    }
-    
-    let client = client_builder.build().await?;
+
+    let ca_cert_path = std::env::var("MATRIX_CA_CERT")?;
+    tracing::info!("Loading CA certificate from {}", ca_cert_path);
+    let ca_cert_pem = fs::read(&ca_cert_path)?;
+    let ca_cert = reqwest::Certificate::from_pem(&ca_cert_pem)?;
+
+    let client = Client::builder()
+        .server_name(&ServerName::parse(matrix_hostname)?)
+        .add_root_certificates(vec![ca_cert.clone()])
+        .build()
+        .await?;
+
+    let http_client = HttpClient::builder()
+        .timeout(Duration::from_secs(30))
+        .add_root_certificate(ca_cert)
+        .build()?;
+
+    tracing::info!("CA certificate loaded, attempting login");
     let test_result = client
         .matrix_auth()
         .login_username(username, password)
@@ -158,27 +154,10 @@ async fn create_client(
 
     if test_result.is_ok() {
         tracing::info!("Existing Matrix credentials are valid");
-        return Ok((client, username));
+        return Ok((client, http_client, username));
     }
     tracing::warn!("Matrix credentials are invalid, Creating account");
 
-    // Build HTTP client with CA certificate for Matrix registration API
-    let mut http_client_builder = HttpClient::builder()
-        .timeout(Duration::from_secs(30));
-    
-    // Load CA certificate if available
-    if let Ok(ca_cert_path) = std::env::var("MATRIX_CA_CERT") {
-        if std::path::Path::new(&ca_cert_path).exists() {
-            if let Ok(ca_cert_pem) = fs::read(&ca_cert_path) {
-                if let Ok(ca_cert) = reqwest::Certificate::from_pem(&ca_cert_pem) {
-                    http_client_builder = http_client_builder.add_root_certificate(ca_cert);
-                    tracing::info!("HTTP client loaded CA certificate");
-                }
-            }
-        }
-    }
-    
-    let http_client = http_client_builder.build()?;
     let register_url = format!("https://{}/_synapse/admin/v1/register", matrix_hostname);
 
     let nonce_response = http_client
@@ -236,7 +215,7 @@ async fn create_client(
         .send()
         .await?;
 
-    Ok((client, username))
+    Ok((client, http_client, username))
 }
 
 #[tokio::main]
@@ -267,7 +246,7 @@ async fn setup() -> anyhow::Result<()> {
     let matrix_password = std::env::var("MATRIX_PASSWORD")?;
 
     // Load or create Matrix credentials
-    let (client, username) =
+    let (client, http_client, username) =
         create_client(matrix_hostname, &matrix_secret, &matrix_password).await?;
 
     let owned_room_id = RoomOrAliasId::parse("#agent_room:{matrix_hostname}")?;
@@ -286,10 +265,6 @@ async fn setup() -> anyhow::Result<()> {
         owned_server_name,
         matrix_state.clone(),
     ));
-
-    let http_client = HttpClient::builder()
-        .timeout(Duration::from_secs(10))
-        .build()?;
 
     let state = AppState {
         version: env!("CARGO_PKG_VERSION"),
