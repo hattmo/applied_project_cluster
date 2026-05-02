@@ -29,8 +29,8 @@ kind: ConfigMap
 metadata:
   name: matrix-well-known
 data:
-  server: '{"m.server":"matrix.npc.svc.cluster.local:443"}'
-  client: '{"m.homeserver":{"base_url":"https://matrix.npc.svc.cluster.local"}}'
+  server: '{"m.server":"matrix.{{ .Release.Namespace }}.svc.cluster.local:443"}'
+  client: '{"m.homeserver":{"base_url":"https://matrix.{{ .Release.Namespace }}.svc.cluster.local"}}'
   nginx.conf: |
     server {
         listen 8080;
@@ -118,6 +118,24 @@ spec:
             echo "ERROR: Could not find registration_shared_secret in config"
             exit 1
           fi
+      - name: generate-tls
+        image: alpine/openssl:latest
+        volumeMounts:
+        - name: tls
+          mountPath: /etc/nginx/ssl
+        command:
+        - "/bin/sh"
+        - "-c"
+        - |
+          CN="matrix.{{ .Release.Namespace }}.svc.cluster.local"
+          echo "Generating self-signed certificate for $CN"
+          openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+            -keyout /etc/nginx/ssl/tls.key \
+            -out /etc/nginx/ssl/tls.crt \
+            -subj "/CN=$CN" \
+            -addext "subjectAltName=DNS:$CN,DNS:matrix,DNS:matrix.{{ .Release.Namespace }}.svc.cluster.local"
+          echo "Certificate generated successfully"
+          ls -la /etc/nginx/ssl/
       containers:
       - name: synapse
         image: matrixdotorg/synapse:latest
@@ -185,9 +203,7 @@ spec:
           - key: nginx.conf
             path: default.conf
       - name: tls
-        secret:
-          secretName: matrix-tls
-          optional: true
+        emptyDir: {}
 ---
 apiVersion: v1
 kind: Service
