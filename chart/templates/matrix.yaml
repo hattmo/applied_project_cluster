@@ -33,6 +33,11 @@ data:
   client: '{"m.homeserver":{"base_url":"https://matrix.npc.svc.cluster.local"}}'
   nginx.conf: |
     server {
+        listen 8080;
+        return 301 https://$host$request_uri;
+    }
+    
+    server {
         listen 8443 ssl;
         ssl_certificate /etc/nginx/ssl/tls.crt;
         ssl_certificate_key /etc/nginx/ssl/tls.key;
@@ -193,6 +198,9 @@ spec:
   selector:
     app: matrix
   ports:
+  - port: 80
+    targetPort: 8080
+    name: http
   - port: 443
     targetPort: 8443
     name: https
