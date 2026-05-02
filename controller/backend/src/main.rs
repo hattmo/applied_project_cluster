@@ -12,7 +12,10 @@ use kube::{
 };
 use matrix_sdk::{
     Client, Room, RoomMemberships, ServerName,
-    ruma::{RoomOrAliasId, UserId, api::client::room::create_room},
+    ruma::{
+        RoomOrAliasId, UserId, api::client::room::create_room,
+        events::room::message::RoomMessageEventContent,
+    },
 };
 use reqwest::Client as HttpClient;
 use serde::{Deserialize, Serialize};
@@ -22,11 +25,38 @@ use tokio_util::sync::CancellationToken;
 use tower_http::{cors::CorsLayer, services::ServeDir, trace::TraceLayer};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
+#[derive(Serialize)]
+struct AgentScaleStatus {
+    current_replicas: i32,
+}
+
+#[derive(Deserialize)]
+struct ScaleAgentsRequest {
+    replicas: i32,
+}
+
 #[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 struct MatrixError {
     errcode: String,
     error: String,
+}
+
+#[derive(Clone, Default)]
+struct MutableState {
+    vm_configs: Arc<RwLock<Vec<VmConfig>>>,
+    task_queues: Arc<RwLock<Vec<TaskQueue>>>,
+    room_members: Arc<RwLock<Box<[MatrixUser]>>>,
+    replicas: Arc<RwLock<i32>>,
+}
+
+impl MutableState {
+    fn new(replicas: i32) -> Self {
+        Self {
+            replicas: Arc::new(RwLock::new(replicas)),
+            ..Default::default()
+        }
+    }
 }
 
 #[allow(dead_code)]
@@ -36,20 +66,12 @@ struct AppState {
     matrix_hostname: &'static str,
     vmware_gateway_hostname: &'static str,
     username: &'static str,
-    vm_configs: Arc<RwLock<Vec<VmConfig>>>,
-    task_queues: Arc<RwLock<Vec<TaskQueue>>>,
+    namespace: &'static str,
+    mutable_state: MutableState,
     http_client: HttpClient,
     client: Client,
     room: Room,
-    matrix_state: MatrixState,
     kube_client: KubeClient,
-    namespace: &'static str,
-    replicas: Arc<RwLock<i32>>,
-}
-
-#[derive(Clone)]
-struct MatrixState {
-    room_members: Arc<RwLock<Box<[MatrixUser]>>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
@@ -299,9 +321,16 @@ async fn setup() -> anyhow::Result<()> {
     };
     tracing::info!("Joined room: {}", owned_room_id);
 
+    let kube_client = KubeClient::try_default().await?;
+    let api: Api<StatefulSet> = Api::namespaced(kube_client.clone(), namespace);
+    let replica_count = get_replica_count(&api)
+        .await
+        .map_err(|_| anyhow::anyhow!("Failed to get replica count"))?;
+
+    let mutable_state = MutableState::new(replica_count);
     for i in 0..5 {
         let username = format!("agent_{i}");
-        if let Err(e) = create_account(
+        let _ = create_account(
             matrix_hostname,
             matrix_secret,
             format!("{matrix_password}_{i}").as_str(),
@@ -309,45 +338,32 @@ async fn setup() -> anyhow::Result<()> {
             false,
             &http_client,
         )
-        .await
-        {
-            tracing::error!(error=?e, "Failed to create agent account");
-        };
-        if let Err(e) = room
-            .invite_user_by_id(&UserId::parse_with_server_name(
-                username,
-                &owned_server_name,
-            )?)
-            .await
-        {
-            tracing::error!(error=?e, "Error trying to invite user");
-        };
+        .await;
+        let user_id = &UserId::parse_with_server_name(username, &owned_server_name)?;
+        if i < replica_count {
+            let _ = room.invite_user_by_id(user_id).await;
+        } else {
+            let _ = room.kick_user(user_id, Some("Scaled down"));
+        }
     }
-    let matrix_state = MatrixState {
-        room_members: Arc::new(RwLock::new(Default::default())),
-    };
     let token = CancellationToken::new();
     tracing::info!("Starting background job");
     let background_job = tokio::spawn(sync_matrix_room(
         token.clone(),
         room.clone(),
-        matrix_state.clone(),
+        mutable_state.clone(),
     ));
-    let kube_client = KubeClient::try_default().await?;
     let state = AppState {
         version: env!("CARGO_PKG_VERSION"),
         matrix_hostname,
         vmware_gateway_hostname,
-        vm_configs: Arc::new(RwLock::new(Vec::new())),
-        task_queues: Arc::new(RwLock::new(Vec::new())),
+        mutable_state,
         http_client,
         client,
         room,
-        matrix_state,
         username,
         kube_client,
         namespace,
-        replicas: RwLock::new(1).into(),
     };
     tracing::info!("Seting up routes");
     let app = Router::new()
@@ -396,39 +412,95 @@ async fn setup() -> anyhow::Result<()> {
 async fn sync_matrix_room(
     token: CancellationToken,
     room: Room,
-    matrix_state: MatrixState,
+    MutableState {
+        room_members,
+        task_queues,
+        vm_configs,
+        ..
+    }: MutableState,
 ) -> anyhow::Result<()> {
     let _drop = token.drop_guard_ref();
 
     loop {
         if let None = token
-            .run_until_cancelled(sleep(Duration::from_secs(5)))
+            .run_until_cancelled(sleep(Duration::from_secs(20)))
             .await
         {
             break;
         };
 
-        let Ok(members) = room.members(RoomMemberships::all()).await else {
-            tracing::error!("Failed to get room members");
-            continue;
-        };
-        let mut members: Box<[MatrixUser]> = members
+        update_membership(&room, &room_members).await;
+        for queue in task_queues
+            .read()
+            .await
             .iter()
-            .map(|m| MatrixUser {
-                user_id: m.user_id().as_str().to_owned(),
-                display_name: m.display_name().map(ToOwned::to_owned),
-            })
-            .collect();
-        members.sort();
-
-        // Update shared state
-        let mut stored_members = matrix_state.room_members.write().await;
-        if *stored_members != members {
-            tracing::info!(?members, "Updated members");
-            *stored_members = members;
+            .filter(|queue| queue.enabled)
+        {
+            tracing::info!(?queue, "Enabled task");
+            let Some(agent_name) = vm_configs.read().await.iter().find_map(|i| {
+                if i.name == queue.vm_id {
+                    Some(i.user_id.clone())
+                } else {
+                    None
+                }
+            }) else {
+                continue;
+            };
+            let queue_message = build_promt(queue, &agent_name);
+            let content = RoomMessageEventContent::text_plain(queue_message);
+            let _ = room.send(content).await;
         }
     }
     Ok(())
+}
+
+fn build_promt(task_queue: &TaskQueue, agent_name: &str) -> String {
+    let rows: String = task_queue
+        .tasks
+        .iter()
+        .map(
+            |Task {
+                 description,
+                 keystrokes,
+                 delay_ms,
+             }| {
+                let keystrokes = keystrokes
+                    .as_ref()
+                    .map(|i| i.clone())
+                    .unwrap_or_else(|| " ".to_string());
+                let delay_ms = delay_ms
+                    .map(|i| i.to_string())
+                    .unwrap_or_else(|| " ".to_string());
+                format!("|{description}|{keystrokes}|{delay_ms}|\n")
+            },
+        )
+        .collect();
+    format!(
+        "@{}, I want you to perform the following task as described in the table below on the VM ({}). To perform these tasks utilize the vmware gateway at the url http://vmware-gateway. you should already know how to use that api based on tools in your context. The description is a description of the task, and if there are keystrokes try using those to accomplish your task but feel free to adjust if they dont work.  Remember which tasks you complete and when you see this message again compare what you have already done with what you still need to do and pick up where you left off.  If all the tasks are already completed start at the top of the list and do them again.  If you get stuck use judgment to try to complete the task in spirit.  The main point is to persistently send commands to the vm and try to work through issues: \n|Description|Keystrokes|delay|\n|:---:|:---:|:---:|\n{rows}",
+        agent_name, task_queue.vm_id
+    )
+}
+
+async fn update_membership(room: &Room, room_members: &Arc<RwLock<Box<[MatrixUser]>>>) {
+    let Ok(members) = room.members(RoomMemberships::all()).await else {
+        tracing::error!("Failed to get room members");
+        return;
+    };
+    let mut members: Box<[MatrixUser]> = members
+        .iter()
+        .map(|m| MatrixUser {
+            user_id: m.user_id().as_str().to_owned(),
+            display_name: m.display_name().map(ToOwned::to_owned),
+        })
+        .collect();
+    members.sort();
+    let mut stored_members = room_members.write().await;
+
+    // Update shared state
+    if *stored_members != members {
+        tracing::info!(?members, "Updated members");
+        *stored_members = members;
+    }
 }
 
 async fn status_handler(State(state): State<AppState>) -> Json<HealthResponse> {
@@ -449,25 +521,15 @@ async fn status_handler(State(state): State<AppState>) -> Json<HealthResponse> {
 
 // Agent handlers (Matrix room members)
 async fn list_agents(State(state): State<AppState>) -> Json<Box<[MatrixUser]>> {
-    let members = state.matrix_state.room_members.read().await;
+    let members = state.mutable_state.room_members.read().await;
     Json(members.clone())
-}
-
-#[derive(Serialize)]
-struct AgentScaleStatus {
-    current_replicas: i32,
-}
-
-#[derive(Deserialize)]
-struct ScaleAgentsRequest {
-    replicas: i32,
 }
 
 async fn get_scale_agents(
     State(state): State<AppState>,
 ) -> Result<Json<AgentScaleStatus>, StatusCode> {
     Ok(Json(AgentScaleStatus {
-        current_replicas: *state.replicas.read().await,
+        current_replicas: *state.mutable_state.replicas.read().await,
     }))
 }
 
@@ -480,18 +542,9 @@ async fn update_scale_agents(
         return Err(StatusCode::BAD_REQUEST);
     }
 
-    let mut stored_replicas = state.replicas.write().await;
+    let mut stored_replicas = state.mutable_state.replicas.write().await;
     let api: Api<StatefulSet> = Api::namespaced(state.kube_client.clone(), state.namespace);
-
-    // Get current replicas before patching
-    let current_sts = api.get("agent").await.map_err(|e| {
-        tracing::error!("Failed to get current StatefulSet: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
-    let current_replicas = current_sts
-        .spec
-        .and_then(|i| i.replicas)
-        .ok_or(StatusCode::INTERNAL_SERVER_ERROR)?;
+    let current_replicas = get_replica_count(&api).await?;
 
     // Handle Matrix room membership changes
     let server_name = ServerName::parse(state.matrix_hostname).map_err(|e| {
@@ -549,6 +602,18 @@ async fn update_scale_agents(
     }))
 }
 
+async fn get_replica_count(api: &Api<StatefulSet>) -> Result<i32, StatusCode> {
+    let current_sts = api.get("agent").await.map_err(|e| {
+        tracing::error!("Failed to get current StatefulSet: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    let current_replicas = current_sts
+        .spec
+        .and_then(|i| i.replicas)
+        .ok_or(StatusCode::INTERNAL_SERVER_ERROR)?;
+    Ok(current_replicas)
+}
+
 // VMware VM handlers
 async fn list_vms(State(state): State<AppState>) -> Result<Json<Vec<String>>, StatusCode> {
     let url = format!("http://{}/api/vms", state.vmware_gateway_hostname);
@@ -573,7 +638,7 @@ async fn list_vms(State(state): State<AppState>) -> Result<Json<Vec<String>>, St
 
 // VM Config handlers
 async fn list_vm_configs(State(state): State<AppState>) -> Json<Vec<VmConfig>> {
-    let configs = state.vm_configs.read().await;
+    let configs = state.mutable_state.vm_configs.read().await;
     Json(configs.clone())
 }
 
@@ -596,7 +661,12 @@ async fn create_vm_config(
         enabled,
     };
 
-    state.vm_configs.write().await.push(config.clone());
+    state
+        .mutable_state
+        .vm_configs
+        .write()
+        .await
+        .push(config.clone());
     (StatusCode::CREATED, Json(config))
 }
 
@@ -604,7 +674,7 @@ async fn get_vm_config(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<Json<VmConfig>, StatusCode> {
-    let configs = state.vm_configs.read().await;
+    let configs = state.mutable_state.vm_configs.read().await;
     configs
         .iter()
         .find(|c| c.id == id)
@@ -617,7 +687,7 @@ async fn update_vm_config(
     Path(id): Path<String>,
     Json(payload): Json<UpdateVmConfig>,
 ) -> Result<Json<VmConfig>, StatusCode> {
-    let mut configs = state.vm_configs.write().await;
+    let mut configs = state.mutable_state.vm_configs.write().await;
     let config = configs
         .iter_mut()
         .find(|c| c.id == id)
@@ -641,7 +711,7 @@ async fn delete_vm_config(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<StatusCode, StatusCode> {
-    let mut configs = state.vm_configs.write().await;
+    let mut configs = state.mutable_state.vm_configs.write().await;
     let pos = configs
         .iter()
         .position(|c| c.id == id)
@@ -651,7 +721,7 @@ async fn delete_vm_config(
 }
 
 async fn list_task_queues(State(state): State<AppState>) -> Json<Vec<TaskQueue>> {
-    let queues = state.task_queues.read().await;
+    let queues = state.mutable_state.task_queues.read().await;
     Json(queues.clone())
 }
 
@@ -670,7 +740,7 @@ async fn create_task_queue(
         updated_at: now,
     };
 
-    let mut queues = state.task_queues.write().await;
+    let mut queues = state.mutable_state.task_queues.write().await;
     queues.push(queue.clone());
 
     (StatusCode::CREATED, Json(queue))
@@ -680,7 +750,7 @@ async fn get_task_queue(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<Json<TaskQueue>, StatusCode> {
-    let queues = state.task_queues.read().await;
+    let queues = state.mutable_state.task_queues.read().await;
     queues
         .iter()
         .find(|q| q.id == id)
@@ -693,7 +763,7 @@ async fn update_task_queue(
     Path(id): Path<String>,
     Json(payload): Json<UpdateTaskQueue>,
 ) -> Result<Json<TaskQueue>, StatusCode> {
-    let mut queues = state.task_queues.write().await;
+    let mut queues = state.mutable_state.task_queues.write().await;
     let queue = queues
         .iter_mut()
         .find(|q| q.id == id)
@@ -719,7 +789,7 @@ async fn delete_task_queue(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<StatusCode, StatusCode> {
-    let mut queues = state.task_queues.write().await;
+    let mut queues = state.mutable_state.task_queues.write().await;
     let pos = queues
         .iter()
         .position(|q| q.id == id)
