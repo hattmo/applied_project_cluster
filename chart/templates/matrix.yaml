@@ -118,7 +118,25 @@ spec:
             echo "ERROR: Could not find registration_shared_secret in config"
             exit 1
           fi
-      - name: generate-tls
+      - name: generate-ca
+        image: alpine/openssl:latest
+        volumeMounts:
+        - name: tls
+          mountPath: /etc/nginx/ssl
+        command:
+        - "/bin/sh"
+        - "-c"
+        - |
+          echo "Generating CA certificate..."
+          # Generate CA private key
+          openssl genrsa -out /etc/nginx/ssl/ca.key 2048
+          # Generate CA certificate
+          openssl req -x509 -new -nodes -key /etc/nginx/ssl/ca.key \
+            -sha256 -days 3650 \
+            -out /etc/nginx/ssl/ca.crt \
+            -subj "/CN=npc.hattmo.com"
+          echo "CA certificate generated"
+      - name: generate-server-tls
         image: alpine/openssl:latest
         volumeMounts:
         - name: tls
@@ -128,13 +146,27 @@ spec:
         - "-c"
         - |
           CN="matrix.{{ .Release.Namespace }}.svc.cluster.local"
-          echo "Generating self-signed certificate for $CN"
-          openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
-            -keyout /etc/nginx/ssl/tls.key \
+          echo "Generating server certificate for $CN signed by CA..."
+          # Generate server private key
+          openssl genrsa -out /etc/nginx/ssl/tls.key 2048
+          # Generate CSR
+          openssl req -new -key /etc/nginx/ssl/tls.key \
+            -out /etc/nginx/ssl/server.csr \
+            -subj "/CN=$CN"
+          # Create SAN config
+          cat > /tmp/san.cnf << EOF
+subjectAltName=DNS:$CN,DNS:matrix,DNS:matrix.{{ .Release.Namespace }}.svc.cluster.local
+EOF
+          # Sign server cert with CA
+          openssl x509 -req -in /etc/nginx/ssl/server.csr \
+            -CA /etc/nginx/ssl/ca.crt \
+            -CAkey /etc/nginx/ssl/ca.key \
+            -CAcreateserial \
             -out /etc/nginx/ssl/tls.crt \
-            -subj "/CN=$CN" \
-            -addext "subjectAltName=DNS:$CN,DNS:matrix,DNS:matrix.{{ .Release.Namespace }}.svc.cluster.local"
-          echo "Certificate generated successfully"
+            -days 365 \
+            -extfile /tmp/san.cnf
+          echo "Server certificate generated and signed by CA"
+          rm /etc/nginx/ssl/server.csr /tmp/san.cnf
           ls -la /etc/nginx/ssl/
       - name: create-ca-secret
         image: bitnami/kubectl:latest
@@ -148,7 +180,7 @@ spec:
         - |
           echo "Creating matrix-ca secret in namespace {{ .Release.Namespace }}..."
           kubectl create secret generic matrix-ca \
-            --from-file=ca.crt=/etc/nginx/ssl/tls.crt \
+            --from-file=ca.crt=/etc/nginx/ssl/ca.crt \
             --namespace={{ .Release.Namespace }} \
             --dry-run=client -o yaml | kubectl apply -f -
           echo "matrix-ca secret created in {{ .Release.Namespace }}"
