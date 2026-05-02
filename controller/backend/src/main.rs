@@ -282,7 +282,7 @@ async fn setup() -> anyhow::Result<()> {
         };
     }
 
-    let Ok(owned_room_id) = RoomOrAliasId::parse("#agent_room:{matrix_hostname}") else {
+    let Ok(owned_room_id) = RoomOrAliasId::parse(format!("#agent_room:{matrix_hostname}")) else {
         anyhow::bail!("Failed to make room alias: {matrix_hostname}");
     };
     let Ok(owned_server_name) = ServerName::parse(matrix_hostname) else {
