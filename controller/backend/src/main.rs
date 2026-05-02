@@ -531,8 +531,8 @@ async fn update_scale_agents(
         }
     });
 
-    let patch_params = PatchParams::apply("controller-agent-scaler");
-    let patch = Patch::Apply(&patch);
+    let patch_params = PatchParams::default();
+    let patch = Patch::Merge(&patch);
 
     let result = api
         .patch("agent", &patch_params, &patch)
