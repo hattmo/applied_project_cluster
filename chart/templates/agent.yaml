@@ -87,6 +87,12 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: metadata.labels['apps.kubernetes.io/pod-index']
+        - name: NODE_EXTRA_CA_CERTS
+          value: /usr/local/share/ca-certificates/matrix-ca/ca.crt
+        volumeMounts:
+        - name: matrix-ca
+          mountPath: /usr/local/share/ca-certificates/matrix-ca
+          readOnly: true
         ports:
         - containerPort: 18789
         livenessProbe:
@@ -108,6 +114,10 @@ spec:
         secret:
           secretName: creds
           defaultMode: 0600
+      - name: matrix-ca
+        secret:
+          secretName: matrix-ca
+          defaultMode: 0644
   volumeClaimTemplates:
   - metadata:
       name: ollama-storage
