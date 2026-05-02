@@ -166,20 +166,16 @@ spec:
           openssl req -new -key /etc/nginx/ssl/tls.key \
             -out /etc/nginx/ssl/server.csr \
             -subj "/CN=$CN"
-          # Create SAN config
-          cat > /tmp/san.cnf << EOF
-subjectAltName=DNS:$CN,DNS:matrix,DNS:matrix.{{ .Release.Namespace }}.svc.cluster.local
-EOF
-          # Sign server cert with CA
+          # Sign server cert with CA (SANs via command line)
           openssl x509 -req -in /etc/nginx/ssl/server.csr \
             -CA /etc/nginx/ssl/ca.crt \
             -CAkey /etc/nginx/ssl/ca.key \
             -CAcreateserial \
             -out /etc/nginx/ssl/tls.crt \
             -days 365 \
-            -extfile /tmp/san.cnf
+            -extfile <(printf "subjectAltName=DNS:$CN,DNS:matrix,DNS:matrix.{{ .Release.Namespace }}.svc.cluster.local")
           echo "Server certificate generated and signed by CA"
-          rm /etc/nginx/ssl/server.csr /tmp/san.cnf
+          rm /etc/nginx/ssl/server.csr
           ls -la /etc/nginx/ssl/
       containers:
       - name: synapse
