@@ -29,10 +29,30 @@ kind: ConfigMap
 metadata:
   name: matrix-well-known
 data:
-  server: |
-    {"m.server":"matrix.npc.svc.cluster.local:80"}
-  client: |
-    {"m.homeserver":{"base_url":"http://matrix.npc.svc.cluster.local"}}
+  server: '{"m.server":"matrix.npc.svc.cluster.local:80"}'
+  client: '{"m.homeserver":{"base_url":"http://matrix.npc.svc.cluster.local"}}'
+  nginx.conf: |
+    server {
+        listen 8080;
+        
+        location /.well-known/matrix/server {
+            default_type application/json;
+            alias /usr/share/nginx/html/.well-known/matrix/server;
+        }
+        
+        location /.well-known/matrix/client {
+            default_type application/json;
+            alias /usr/share/nginx/html/.well-known/matrix/client;
+        }
+        
+        location / {
+            proxy_pass http://127.0.0.1:8008;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+        }
+    }
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -96,18 +116,6 @@ spec:
         image: matrixdotorg/synapse:latest
         ports:
         - containerPort: 8008
-        livenessProbe:
-          httpGet:
-            path: /_matrix/client/versions
-            port: 8008
-          initialDelaySeconds: 30
-          periodSeconds: 10
-        readinessProbe:
-          httpGet:
-            path: /_matrix/client/versions
-            port: 8008
-          initialDelaySeconds: 10
-          periodSeconds: 5
         resources:
           requests:
             memory: "512Mi"
@@ -125,7 +133,8 @@ spec:
         volumeMounts:
         - name: well-known
           mountPath: /usr/share/nginx/html/.well-known/matrix
-          subPath: matrix
+        - name: nginx-config
+          mountPath: /etc/nginx/conf.d
         resources:
           requests:
             memory: "32Mi"
@@ -133,6 +142,18 @@ spec:
           limits:
             memory: "64Mi"
             cpu: "50m"
+        livenessProbe:
+          httpGet:
+            path: /.well-known/matrix/server
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /.well-known/matrix/server
+            port: 8080
+          initialDelaySeconds: 3
+          periodSeconds: 5
       volumes:
       - name: matrix-data
         persistentVolumeClaim:
@@ -140,6 +161,17 @@ spec:
       - name: well-known
         configMap:
           name: matrix-well-known
+          items:
+          - key: server
+            path: server
+          - key: client
+            path: client
+      - name: nginx-config
+        configMap:
+          name: matrix-well-known
+          items:
+          - key: nginx.conf
+            path: default.conf
 ---
 apiVersion: v1
 kind: Service
@@ -151,21 +183,8 @@ spec:
     app: matrix
   ports:
   - port: 80
-    targetPort: 8008
-    name: synapse
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: matrix-well-known
-spec:
-  type: ClusterIP
-  selector:
-    app: matrix
-  ports:
-  - port: 80
     targetPort: 8080
-    name: well-known
+    name: http
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
