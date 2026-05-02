@@ -88,7 +88,7 @@ spec:
           mountPath: /data
         env:
         - name: "SYNAPSE_SERVER_NAME"
-          value: "matrix"
+          value: "matrix.{{ .Release.Namespace }}.svc.cluster.local"
         - name: "SYNAPSE_REPORT_STATS"
           value: "no"
         args:
