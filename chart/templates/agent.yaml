@@ -51,17 +51,7 @@ spec:
               name: creds
               key: ollama-api-key
         - name: OLLAMA_MODEL
-          value: "qwen3.5:cloud"
-        command:
-        - sh
-        - -c
-        - |
-          ollama serve &
-          sleep 5
-          echo "Pulling llava:latest for vision tasks..."
-          ollama pull llava:latest
-          echo "Models ready: qwen3.5:cloud (text), llava:latest (vision)"
-          wait
+          value: "qwen:3.5"
         ports:
         - containerPort: 11434
         livenessProbe:
