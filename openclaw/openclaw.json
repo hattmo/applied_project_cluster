@@ -71,20 +71,20 @@
 						"useFor": "text"
 					},
 					{
-						"contextWindow": 32768,
+						"contextWindow": 262144,
 						"cost": {
 							"cacheRead": 0,
 							"cacheWrite": 0,
 							"input": 0,
 							"output": 0
 						},
-						"id": "llava:latest",
+						"id": "kimi-k2.6:cloud",
 						"input": [
 							"text",
 							"image"
 						],
-						"maxTokens": 4096,
-						"name": "llava:latest",
+						"maxTokens": 32768,
+						"name": "kimi-k2.6:cloud",
 						"useFor": "vision"
 					}
 				]
