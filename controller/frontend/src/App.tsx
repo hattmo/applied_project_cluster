@@ -37,7 +37,6 @@ const API_BASE = '/api/v1'
 
 interface AgentScaleStatus {
   current_replicas: number
-  desired_replicas: number
 }
 
 function App() {
@@ -655,7 +654,6 @@ function App() {
             <div className="scale-container">
               <div className="scale-info">
                 <p>Current replicas: <strong>{scaleStatus.current_replicas}</strong></p>
-                <p>Desired replicas: <strong>{scaleStatus.desired_replicas}</strong></p>
               </div>
 
               <div className="scale-controls">

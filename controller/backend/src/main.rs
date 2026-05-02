@@ -44,6 +44,7 @@ struct AppState {
     matrix_state: MatrixState,
     kube_client: KubeClient,
     namespace: &'static str,
+    replicas: Arc<RwLock<i32>>,
 }
 
 #[derive(Clone)]
@@ -346,6 +347,7 @@ async fn setup() -> anyhow::Result<()> {
         username,
         kube_client,
         namespace,
+        replicas: RwLock::new(1).into(),
     };
     tracing::info!("Seting up routes");
     let app = Router::new()
@@ -361,7 +363,8 @@ async fn setup() -> anyhow::Result<()> {
         .route("/api/v1/task-queues/:id", get(get_task_queue))
         .route("/api/v1/task-queues/:id", put(update_task_queue))
         .route("/api/v1/task-queues/:id", delete(delete_task_queue))
-        .route("/api/v1/agents/scale", put(scale_agents))
+        .route("/api/v1/agents/scale", put(update_scale_agents))
+        .route("/api/v1/agents/scale", put(get_scale_agents))
         .nest_service(
             "/",
             ServeDir::new("/app/frontend/static").append_index_html_on_directories(true),
@@ -453,7 +456,6 @@ async fn list_agents(State(state): State<AppState>) -> Json<Box<[MatrixUser]>> {
 #[derive(Serialize)]
 struct AgentScaleStatus {
     current_replicas: i32,
-    desired_replicas: i32,
 }
 
 #[derive(Deserialize)]
@@ -461,7 +463,15 @@ struct ScaleAgentsRequest {
     replicas: i32,
 }
 
-async fn scale_agents(
+async fn get_scale_agents(
+    State(state): State<AppState>,
+) -> Result<Json<AgentScaleStatus>, StatusCode> {
+    Ok(Json(AgentScaleStatus {
+        current_replicas: *state.replicas.read().await,
+    }))
+}
+
+async fn update_scale_agents(
     State(state): State<AppState>,
     Json(payload): Json<ScaleAgentsRequest>,
 ) -> Result<Json<AgentScaleStatus>, StatusCode> {
@@ -470,6 +480,7 @@ async fn scale_agents(
         return Err(StatusCode::BAD_REQUEST);
     }
 
+    let mut stored_replicas = state.replicas.write().await;
     let api: Api<StatefulSet> = Api::namespaced(state.kube_client.clone(), state.namespace);
 
     // Get current replicas before patching
@@ -477,7 +488,10 @@ async fn scale_agents(
         tracing::error!("Failed to get current StatefulSet: {}", e);
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
-    let current_replicas = current_sts.spec.and_then(|i| i.replicas).unwrap_or(1);
+    let current_replicas = current_sts
+        .spec
+        .and_then(|i| i.replicas)
+        .ok_or(StatusCode::INTERNAL_SERVER_ERROR)?;
 
     // Handle Matrix room membership changes
     let server_name = ServerName::parse(state.matrix_hostname).map_err(|e| {
@@ -529,10 +543,9 @@ async fn scale_agents(
         })?;
 
     let new_replicas = result.spec.and_then(|i| i.replicas).unwrap_or(1);
-
+    *stored_replicas = new_replicas;
     Ok(Json(AgentScaleStatus {
         current_replicas: new_replicas,
-        desired_replicas: replicas,
     }))
 }
 
