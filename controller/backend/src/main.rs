@@ -267,7 +267,7 @@ async fn setup() -> anyhow::Result<()> {
     let (client, http_client, username) =
         create_client(matrix_hostname, matrix_secret, &matrix_password).await?;
 
-    for i in 0..0 {
+    for i in 0..1 {
         if let Err(e) = create_account(
             matrix_hostname,
             matrix_secret,
@@ -282,8 +282,12 @@ async fn setup() -> anyhow::Result<()> {
         };
     }
 
-    let owned_room_id = RoomOrAliasId::parse("#agent_room:{matrix_hostname}")?;
-    let owned_server_name = ServerName::parse(matrix_hostname)?;
+    let Ok(owned_room_id) = RoomOrAliasId::parse("#agent_room:{matrix_hostname}") else {
+        anyhow::bail!("Failed to make room alias: {matrix_hostname}");
+    };
+    let Ok(owned_server_name) = ServerName::parse(matrix_hostname) else {
+        anyhow::bail!("Failed to make owned server name: {matrix_hostname}");
+    };
 
     let matrix_state = MatrixState {
         room_members: Arc::new(RwLock::new(Default::default())),

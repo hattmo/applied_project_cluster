@@ -145,7 +145,6 @@ spec:
             echo "Creating matrix-ca secret..."
             kubectl create secret generic matrix-ca \
               --from-file=ca.crt=/etc/nginx/ssl/ca.crt \
-              --from-file=ca.key=/etc/nginx/ssl/ca.key \
               --namespace={{ .Release.Namespace }}
             echo "CA generated and secret created"
           fi
