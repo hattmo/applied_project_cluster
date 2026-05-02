@@ -449,12 +449,15 @@ async fn sync_matrix_room(
             };
             let queue_message = build_promt(queue, &agent_name);
             let Ok(user_id) = UserId::parse(agent_name.as_str()) else {
+                tracing::error!(agent_name, "Failed to parse UserID");
                 continue;
             };
             let message = RoomMessageEventContent::text_plain(&queue_message)
                 .add_mentions(Mentions::with_user_ids([user_id]));
             // Create a proper Matrix mention so only the targeted agent responds
-            let _ = room.send(message).await;
+            if let Err(e) = room.send(message).await {
+                tracing::error!(error=?e, message=queue_message, "Error sending message");
+            };
         }
     }
     Ok(())
