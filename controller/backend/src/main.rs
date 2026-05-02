@@ -158,22 +158,43 @@ async fn create_client(
     }
     tracing::warn!("Matrix credentials are invalid, Creating account");
 
-    let register_url = format!("https://{}/_synapse/admin/v1/register", matrix_hostname);
+    create_account(
+        matrix_hostname,
+        shared_secret,
+        password,
+        username,
+        &http_client,
+    )
+    .await?;
 
+    client
+        .matrix_auth()
+        .login_username(&username, &password)
+        .send()
+        .await?;
+
+    Ok((client, http_client, username))
+}
+
+async fn create_account(
+    matrix_hostname: &str,
+    shared_secret: &str,
+    password: &str,
+    username: &str,
+    http_client: &HttpClient,
+) -> Result<(), anyhow::Error> {
+    let register_url = format!("https://{}/_synapse/admin/v1/register", matrix_hostname);
     let nonce_response = http_client
         .get(&register_url)
         .send()
         .await?
         .json::<serde_json::Value>()
         .await?;
-
     tracing::debug!(?nonce_response, "Register api get response");
-
     let nonce = nonce_response
         .get("nonce")
         .and_then(|v| v.as_str())
         .ok_or_else(|| anyhow::anyhow!("No nonce in response"))?;
-
     tracing::debug!(?shared_secret, %username, %password, "Creating new user");
     let bytes = [
         nonce.as_bytes(),
@@ -194,28 +215,18 @@ async fn create_client(
         "admin": true,
         "mac": signature
     });
-
     let response = http_client
         .post(&register_url)
         .json(&register_body)
         .send()
         .await?;
-
     if !response.status().is_success() {
         let response_json: MatrixError = response.json().await?;
         tracing::info!(response = ?response_json, "Failed to create account");
         anyhow::bail!("Failed to setup client")
     }
-
     tracing::info!("Matrix account created successfully: {}", username);
-
-    client
-        .matrix_auth()
-        .login_username(&username, &password)
-        .send()
-        .await?;
-
-    Ok((client, http_client, username))
+    Ok(())
 }
 
 #[tokio::main]
@@ -242,12 +253,26 @@ async fn setup() -> anyhow::Result<()> {
     let matrix_hostname: &'static str = std::env::var("MATRIX_HOSTNAME")?.leak();
     let vmware_gateway_hostname: &'static str = std::env::var("VMWARE_GATEWAY_HOSTNAME")?.leak();
 
-    let matrix_secret = std::env::var("MATRIX_SECRET")?;
+    let matrix_secret: &'static str = std::env::var("MATRIX_SECRET")?.leak();
     let matrix_password = std::env::var("MATRIX_PASSWORD")?;
 
     // Load or create Matrix credentials
     let (client, http_client, username) =
-        create_client(matrix_hostname, &matrix_secret, &matrix_password).await?;
+        create_client(matrix_hostname, matrix_secret, &matrix_password).await?;
+
+    for i in 0..0 {
+        if let Err(e) = create_account(
+            matrix_hostname,
+            matrix_secret,
+            format!("{matrix_password}_{i}").as_str(),
+            format!("agent_{i}").as_str(),
+            &http_client,
+        )
+        .await
+        {
+            tracing::error!(error=?e, "Failed to create agent account");
+        };
+    }
 
     let owned_room_id = RoomOrAliasId::parse("#agent_room:{matrix_hostname}")?;
     let owned_server_name = ServerName::parse(matrix_hostname)?;
