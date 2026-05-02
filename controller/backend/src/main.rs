@@ -5,11 +5,11 @@ use axum::{
     response::Json,
     routing::{delete, get, post, put},
 };
-use kube::{
-    api::{Api, Patch, PatchParams},
-    Client as KubeClient,
-};
 use k8s_openapi::api::apps::v1::StatefulSet;
+use kube::{
+    Client as KubeClient,
+    api::{Api, Patch, PatchParams},
+};
 use matrix_sdk::{
     Client, Room, RoomMemberships, ServerName,
     ruma::{RoomOrAliasId, UserId, api::client::room::create_room},
@@ -265,6 +265,7 @@ async fn setup() -> anyhow::Result<()> {
 
     // Load environment variables
 
+    let namespace: &'static str = std::env::var("NAMESPACE")?.leak();
     let matrix_hostname: &'static str = std::env::var("MATRIX_HOSTNAME")?.leak();
     let vmware_gateway_hostname: &'static str = std::env::var("VMWARE_GATEWAY_HOSTNAME")?.leak();
 
@@ -297,7 +298,7 @@ async fn setup() -> anyhow::Result<()> {
     };
     tracing::info!("Joined room: {}", owned_room_id);
 
-    for i in 0..1 {
+    for i in 0..5 {
         let username = format!("agent_{i}");
         if let Err(e) = create_account(
             matrix_hostname,
@@ -331,7 +332,6 @@ async fn setup() -> anyhow::Result<()> {
         room.clone(),
         matrix_state.clone(),
     ));
-    let namespace: &'static str = std::env::var("NAMESPACE").unwrap_or("npc-dev").leak();
     let kube_client = KubeClient::try_default().await?;
     let state = AppState {
         version: env!("CARGO_PKG_VERSION"),
@@ -471,16 +471,13 @@ async fn scale_agents(
     }
 
     let api: Api<StatefulSet> = Api::namespaced(state.kube_client.clone(), state.namespace);
-    
+
     // Get current replicas before patching
-    let current_sts = api
-        .get("agent")
-        .await
-        .map_err(|e| {
-            tracing::error!("Failed to get current StatefulSet: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
-    let current_replicas = current_sts.spec.replicas.unwrap_or(1) as i32;
+    let current_sts = api.get("agent").await.map_err(|e| {
+        tracing::error!("Failed to get current StatefulSet: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    let current_replicas = current_sts.spec.and_then(|i| i.replicas).unwrap_or(1);
 
     // Handle Matrix room membership changes
     let server_name = ServerName::parse(state.matrix_hostname).map_err(|e| {
@@ -492,7 +489,7 @@ async fn scale_agents(
         // Scaling down - kick excess agents
         for i in replicas..current_replicas {
             let user_id = format!("agent_{}", i);
-            if let Ok(user) = UserId::parse_with_server_name(&user_id, &server_name) {
+            if let Ok(user) = UserId::parse_with_server_name(user_id.as_str(), &server_name) {
                 if let Err(e) = state.room.kick_user(&user, Some("Scaled down")).await {
                     tracing::warn!("Failed to kick agent {}: {}", user_id, e);
                 } else {
@@ -504,7 +501,7 @@ async fn scale_agents(
         // Scaling up - invite new agents
         for i in current_replicas..replicas {
             let user_id = format!("agent_{}", i);
-            if let Ok(user) = UserId::parse_with_server_name(&user_id, &server_name) {
+            if let Ok(user) = UserId::parse_with_server_name(user_id.as_str(), &server_name) {
                 if let Err(e) = state.room.invite_user_by_id(&user).await {
                     tracing::warn!("Failed to invite agent {}: {}", user_id, e);
                 } else {
@@ -531,7 +528,7 @@ async fn scale_agents(
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
 
-    let new_replicas = result.spec.replicas.unwrap_or(1) as i32;
+    let new_replicas = result.spec.and_then(|i| i.replicas).unwrap_or(1);
 
     Ok(Json(AgentScaleStatus {
         current_replicas: new_replicas,
