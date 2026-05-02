@@ -6,8 +6,8 @@ use axum::{
     routing::{delete, get, post, put},
 };
 use matrix_sdk::{
-    Client, OwnedServerName, RoomMemberships, ServerName,
-    ruma::{OwnedRoomOrAliasId, RoomOrAliasId},
+    Client, Room, RoomMemberships, ServerName,
+    ruma::{RoomOrAliasId, UserId, api::client::room::create_room},
 };
 use reqwest::Client as HttpClient;
 use serde::{Deserialize, Serialize};
@@ -24,6 +24,7 @@ struct MatrixError {
     error: String,
 }
 
+#[allow(dead_code)]
 #[derive(Clone)]
 struct AppState {
     version: &'static str,
@@ -33,8 +34,8 @@ struct AppState {
     vm_configs: Arc<RwLock<Vec<VmConfig>>>,
     task_queues: Arc<RwLock<Vec<TaskQueue>>>,
     http_client: HttpClient,
-    #[allow(dead_code)]
     client: Client,
+    room: Room,
     matrix_state: MatrixState,
 }
 
@@ -267,7 +268,30 @@ async fn setup() -> anyhow::Result<()> {
     let (client, http_client, username) =
         create_client(matrix_hostname, matrix_secret, &matrix_password).await?;
 
+    let Ok(owned_room_id) = RoomOrAliasId::parse(format!("#agent_room:{matrix_hostname}")) else {
+        anyhow::bail!("Failed to make room alias: {matrix_hostname}");
+    };
+    let Ok(owned_server_name) = ServerName::parse(matrix_hostname) else {
+        anyhow::bail!("Failed to make owned server name: {matrix_hostname}");
+    };
+
+    let room = match client
+        .join_room_by_id_or_alias(&owned_room_id, &[owned_server_name.clone()])
+        .await
+    {
+        Ok(room) => room,
+        Err(e) => {
+            tracing::error!(error=?e, "Could not join room trying to create");
+            let mut room_req = create_room::v3::Request::new();
+            room_req.name = Some("agent_room".into());
+            room_req.room_alias_name = Some("agent_room".into());
+            client.create_room(room_req).await?
+        }
+    };
+    tracing::info!("Joined room: {}", owned_room_id);
+
     for i in 0..1 {
+        let username = format!("agent_{i}");
         if let Err(e) = create_account(
             matrix_hostname,
             matrix_secret,
@@ -280,29 +304,26 @@ async fn setup() -> anyhow::Result<()> {
         {
             tracing::error!(error=?e, "Failed to create agent account");
         };
+        if let Err(e) = room
+            .invite_user_by_id(&UserId::parse_with_server_name(
+                username,
+                &owned_server_name,
+            )?)
+            .await
+        {
+            tracing::error!(error=?e, "Error trying to invite user");
+        };
     }
-
-    let Ok(owned_room_id) = RoomOrAliasId::parse(format!("#agent_room:{matrix_hostname}")) else {
-        anyhow::bail!("Failed to make room alias: {matrix_hostname}");
-    };
-    let Ok(owned_server_name) = ServerName::parse(matrix_hostname) else {
-        anyhow::bail!("Failed to make owned server name: {matrix_hostname}");
-    };
-
     let matrix_state = MatrixState {
         room_members: Arc::new(RwLock::new(Default::default())),
     };
-
     let token = CancellationToken::new();
     tracing::info!("Starting background job");
     let background_job = tokio::spawn(sync_matrix_room(
         token.clone(),
-        client.clone(),
-        owned_room_id,
-        owned_server_name,
+        room.clone(),
         matrix_state.clone(),
     ));
-
     let state = AppState {
         version: env!("CARGO_PKG_VERSION"),
         matrix_hostname,
@@ -311,6 +332,7 @@ async fn setup() -> anyhow::Result<()> {
         task_queues: Arc::new(RwLock::new(Vec::new())),
         http_client,
         client,
+        room,
         matrix_state,
         username,
     };
@@ -358,16 +380,10 @@ async fn setup() -> anyhow::Result<()> {
 
 async fn sync_matrix_room(
     token: CancellationToken,
-    client: Client,
-    room_id: OwnedRoomOrAliasId,
-    server_id: OwnedServerName,
+    room: Room,
     matrix_state: MatrixState,
 ) -> anyhow::Result<()> {
     let _drop = token.drop_guard_ref();
-    let room = client
-        .join_room_by_id_or_alias(&room_id, &[server_id])
-        .await?;
-    tracing::info!("Joined room: {}", room_id);
 
     loop {
         if let None = token
