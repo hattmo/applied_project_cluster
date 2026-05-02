@@ -29,8 +29,8 @@ kind: ConfigMap
 metadata:
   name: matrix-well-known
 data:
-  server: '{"m.server":"matrix.npc.svc.cluster.local:80"}'
-  client: '{"m.homeserver":{"base_url":"http://matrix.npc.svc.cluster.local"}}'
+  server: '{"m.server":"matrix:80"}'
+  client: '{"m.homeserver":{"base_url":"http://matrix"}}'
   nginx.conf: |
     server {
         listen 8080;
