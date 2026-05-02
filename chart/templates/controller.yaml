@@ -33,7 +33,7 @@ spec:
           periodSeconds: 5
         env:
         - name: MATRIX_HOSTNAME
-          value: "matrix"
+          value: "matrix.{{ .Release.Namespace }}.svc.cluster.local"
         - name: VMWARE_GATEWAY_HOSTNAME
           value: "vmware-gateway"
         - name: MATRIX_SECRET
