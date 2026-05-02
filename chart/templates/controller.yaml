@@ -46,6 +46,17 @@ spec:
             secretKeyRef:
               name: creds
               key: matrix-password
+        - name: MATRIX_CA_CERT
+          value: "/etc/ssl/certs/matrix-ca/ca.crt"
+        volumeMounts:
+        - name: matrix-ca
+          mountPath: /etc/ssl/certs/matrix-ca
+          readOnly: true
+      volumes:
+      - name: matrix-ca
+        secret:
+          secretName: matrix-ca
+          defaultMode: 0644
 ---
 apiVersion: v1
 kind: Service

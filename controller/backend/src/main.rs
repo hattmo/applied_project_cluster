@@ -6,12 +6,12 @@ use axum::{
     routing::{delete, get, post, put},
 };
 use matrix_sdk::{
-    Client, OwnedServerName, RoomMemberships, ServerName,
+    Client, ClientBuildError, OwnedServerName, RoomMemberships, ServerName,
     ruma::{OwnedRoomOrAliasId, RoomOrAliasId},
 };
 use reqwest::Client as HttpClient;
 use serde::{Deserialize, Serialize};
-use std::{process::ExitCode, sync::Arc, time::Duration};
+use std::{fs, process::ExitCode, sync::Arc, time::Duration};
 use tokio::{sync::RwLock, time::sleep};
 use tokio_util::sync::CancellationToken;
 use tower_http::{cors::CorsLayer, services::ServeDir, trace::TraceLayer};
@@ -128,11 +128,28 @@ async fn create_client(
     password: &str,
 ) -> anyhow::Result<(Client, &'static str)> {
     let username = "controller";
-    let client = Client::builder()
-        .server_name(&ServerName::parse(matrix_hostname)?)
-        .disable_ssl_verification()
-        .build()
-        .await?;
+    
+    // Build client with CA certificate if available
+    let mut client_builder = Client::builder()
+        .server_name(&ServerName::parse(matrix_hostname)?);
+    
+    // Load CA certificate from env var if set
+    if let Ok(ca_cert_path) = std::env::var("MATRIX_CA_CERT") {
+        if std::path::Path::new(&ca_cert_path).exists() {
+            tracing::info!("Loading CA certificate from {}", ca_cert_path);
+            let ca_cert_pem = fs::read(&ca_cert_path)?;
+            if let Ok(ca_cert) = reqwest::Certificate::from_pem(&ca_cert_pem) {
+                client_builder = client_builder.add_root_certificate(ca_cert);
+                tracing::info!("CA certificate loaded, SSL verification enabled");
+            }
+        }
+    } else {
+        // Fallback: disable SSL verification (dev only)
+        tracing::warn!("MATRIX_CA_CERT not set, disabling SSL verification");
+        client_builder = client_builder.disable_ssl_verification();
+    }
+    
+    let client = client_builder.build().await?;
     let test_result = client
         .matrix_auth()
         .login_username(username, password)
@@ -145,9 +162,23 @@ async fn create_client(
     }
     tracing::warn!("Matrix credentials are invalid, Creating account");
 
-    let http_client = HttpClient::builder()
-        .timeout(Duration::from_secs(30))
-        .build()?;
+    // Build HTTP client with CA certificate for Matrix registration API
+    let mut http_client_builder = HttpClient::builder()
+        .timeout(Duration::from_secs(30));
+    
+    // Load CA certificate if available
+    if let Ok(ca_cert_path) = std::env::var("MATRIX_CA_CERT") {
+        if std::path::Path::new(&ca_cert_path).exists() {
+            if let Ok(ca_cert_pem) = fs::read(&ca_cert_path) {
+                if let Ok(ca_cert) = reqwest::Certificate::from_pem(&ca_cert_pem) {
+                    http_client_builder = http_client_builder.add_root_certificate(ca_cert);
+                    tracing::info!("HTTP client loaded CA certificate");
+                }
+            }
+        }
+    }
+    
+    let http_client = http_client_builder.build()?;
     let register_url = format!("https://{}/_synapse/admin/v1/register", matrix_hostname);
 
     let nonce_response = http_client
