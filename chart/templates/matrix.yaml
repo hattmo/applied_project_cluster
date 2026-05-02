@@ -159,11 +159,12 @@ spec:
         - "/bin/sh"
         - "-c"
         - |
-          echo "Creating matrix-ca secret from generated certificate..."
+          echo "Creating matrix-ca secret in namespace ${POD_NAMESPACE}..."
           kubectl create secret generic matrix-ca \
             --from-file=ca.crt=/etc/nginx/ssl/tls.crt \
+            --namespace=${POD_NAMESPACE} \
             --dry-run=client -o yaml | kubectl apply -f -
-          echo "matrix-ca secret created"
+          echo "matrix-ca secret created in ${POD_NAMESPACE}"
       containers:
       - name: synapse
         image: matrixdotorg/synapse:latest
