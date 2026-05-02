@@ -24,6 +24,16 @@ roleRef:
   name: matrix-secret-manager
   apiGroup: rbac.authorization.k8s.io
 ---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: matrix-well-known
+data:
+  server: |
+    {"m.server":"matrix.npc.svc.cluster.local:80"}
+  client: |
+    {"m.homeserver":{"base_url":"http://matrix.npc.svc.cluster.local"}}
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -31,7 +41,7 @@ metadata:
   labels:
     app: matrix
 spec:
-  strategy: 
+  strategy:
     type: Recreate
   replicas: 1
   selector:
@@ -108,10 +118,28 @@ spec:
         volumeMounts:
         - name: matrix-data
           mountPath: /data
+      - name: well-known
+        image: nginx:alpine
+        ports:
+        - containerPort: 8080
+        volumeMounts:
+        - name: well-known
+          mountPath: /usr/share/nginx/html/.well-known/matrix
+          subPath: matrix
+        resources:
+          requests:
+            memory: "32Mi"
+            cpu: "25m"
+          limits:
+            memory: "64Mi"
+            cpu: "50m"
       volumes:
       - name: matrix-data
         persistentVolumeClaim:
           claimName: matrix-pvc
+      - name: well-known
+        configMap:
+          name: matrix-well-known
 ---
 apiVersion: v1
 kind: Service
