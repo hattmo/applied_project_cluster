@@ -76,16 +76,17 @@ spec:
           value: /home/node
         - name: TZ
           value: UTC
-        - name: MATRIX_USER
-          valueFrom:
-            secretKeyRef:
-              name: creds
-              key: agent-matrix-user
+        - name: MATRIX_USERNAME
+          value: agent
         - name: MATRIX_PASSWORD
           valueFrom:
             secretKeyRef:
               name: creds
-              key: agent-matrix-password
+              key: matrix-password
+        - name: INDEX
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.labels['apps.kubernetes.io/pod-index']
         ports:
         - containerPort: 18789
         livenessProbe:
