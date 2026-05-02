@@ -64,7 +64,6 @@
 							"text"
 						],
 						"name": "qwen3.5:cloud",
-						"useFor": "text"
 					},
 					{
 						"id": "kimi-k2.6:cloud",
@@ -73,7 +72,6 @@
 							"image"
 						],
 						"name": "kimi-k2.6:cloud",
-						"useFor": "vision"
 					}
 				]
 			}

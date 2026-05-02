@@ -13,8 +13,9 @@ use kube::{
 use matrix_sdk::{
     Client, Room, RoomMemberships, ServerName,
     ruma::{
-        RoomOrAliasId, UserId, api::client::room::create_room,
-        events::room::message::RoomMessageEventContent,
+        RoomOrAliasId, UserId,
+        api::client::room::create_room,
+        events::{Mentions, room::message::RoomMessageEventContent},
     },
 };
 use reqwest::Client as HttpClient;
@@ -447,13 +448,13 @@ async fn sync_matrix_room(
                 continue;
             };
             let queue_message = build_promt(queue, &agent_name);
-            // Create a proper Matrix mention so only the targeted agent responds
-            let content = if let Ok(user_id) = UserId::parse(agent_name.as_str()) {
-                RoomMessageEventContent::text_mention(&queue_message, &user_id)
-            } else {
-                RoomMessageEventContent::text_plain(&queue_message)
+            let Ok(user_id) = UserId::parse(agent_name.as_str()) else {
+                continue;
             };
-            let _ = room.send(content).await;
+            let message = RoomMessageEventContent::text_plain(&queue_message)
+                .add_mentions(Mentions::with_user_ids([user_id]));
+            // Create a proper Matrix mention so only the targeted agent responds
+            let _ = room.send(message).await;
         }
     }
     Ok(())
