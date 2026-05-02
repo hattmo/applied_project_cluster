@@ -447,7 +447,12 @@ async fn sync_matrix_room(
                 continue;
             };
             let queue_message = build_promt(queue, &agent_name);
-            let content = RoomMessageEventContent::text_plain(queue_message);
+            // Create a proper Matrix mention so only the targeted agent responds
+            let content = if let Ok(user_id) = UserId::parse(agent_name.as_str()) {
+                RoomMessageEventContent::text_mention(&queue_message, &user_id)
+            } else {
+                RoomMessageEventContent::text_plain(&queue_message)
+            };
             let _ = room.send(content).await;
         }
     }

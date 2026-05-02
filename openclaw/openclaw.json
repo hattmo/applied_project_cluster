@@ -26,7 +26,8 @@
 				]
 			},
 			"encryption": true,
-			"autoJoin": "always"
+			"autoJoin": "always",
+			"onlyRespondToMentions": true
 		}
 	},
 	"commands": {
