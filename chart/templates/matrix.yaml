@@ -11,6 +11,9 @@ rules:
 - apiGroups: [""]
   resources: ["secrets"]
   verbs: ["create", "get", "update", "patch"]
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -123,19 +126,29 @@ spec:
         volumeMounts:
         - name: tls
           mountPath: /etc/nginx/ssl
+        env:
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
         command:
         - "/bin/sh"
         - "-c"
         - |
-          CN="matrix.{{ .Release.Namespace }}.svc.cluster.local"
+          CN="matrix.${POD_NAMESPACE}.svc.cluster.local"
           echo "Generating self-signed certificate for $CN"
           openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
             -keyout /etc/nginx/ssl/tls.key \
             -out /etc/nginx/ssl/tls.crt \
             -subj "/CN=$CN" \
-            -addext "subjectAltName=DNS:$CN,DNS:matrix,DNS:matrix.{{ .Release.Namespace }}.svc.cluster.local"
+            -addext "subjectAltName=DNS:$CN,DNS:matrix,DNS:matrix.${POD_NAMESPACE}.svc.cluster.local"
           echo "Certificate generated successfully"
           ls -la /etc/nginx/ssl/
+          echo "Creating matrix-ca secret..."
+          kubectl create secret generic matrix-ca \
+            --from-file=ca.crt=/etc/nginx/ssl/tls.crt \
+            --dry-run=client -o yaml | kubectl apply -f -
+          echo "matrix-ca secret created"
       containers:
       - name: synapse
         image: matrixdotorg/synapse:latest
