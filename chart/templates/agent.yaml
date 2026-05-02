@@ -51,7 +51,7 @@ spec:
               name: creds
               key: ollama-api-key
         - name: OLLAMA_MODEL
-          value: "qwen:3.5"
+          value: "llava:latest"
         ports:
         - containerPort: 11434
         livenessProbe:
