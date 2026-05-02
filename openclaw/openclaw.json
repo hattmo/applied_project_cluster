@@ -2,7 +2,10 @@
 	"agents": {
 		"defaults": {
 			"model": {
-				"primary": "ollama/qwen3.5:cloud"
+				"primary": "ollama/qwen3.5:cloud",
+				"fallbacks": [
+					"ollama/kimi-k2.6:cloud"
+				]
 			},
 			"workspace": "/home/node/.openclaw/workspace"
 		}
@@ -10,7 +13,7 @@
 	"channels": {
 		"matrix": {
 			"network": {
-			  "dangerouslyAllowPrivateNetwork": true
+				"dangerouslyAllowPrivateNetwork": true
 			},
 			"enabled": true,
 			"homeserver": "https://${MATRIX_HOSTNAME}",
@@ -54,38 +57,19 @@
 				"baseUrl": "http://127.0.0.1:11434",
 				"models": [
 					{
-						"contextWindow": 262144,
-						"cost": {
-							"cacheRead": 0,
-							"cacheWrite": 0,
-							"input": 0,
-							"output": 0
-						},
 						"id": "qwen3.5:cloud",
 						"input": [
 							"text"
 						],
-						"maxTokens": 32768,
-						"name": "qwen3.5:cloud",
-						"reasoning": true,
-						"useFor": "text"
+						"name": "qwen3.5:cloud"
 					},
 					{
-						"contextWindow": 262144,
-						"cost": {
-							"cacheRead": 0,
-							"cacheWrite": 0,
-							"input": 0,
-							"output": 0
-						},
 						"id": "kimi-k2.6:cloud",
 						"input": [
 							"text",
 							"image"
 						],
-						"maxTokens": 32768,
-						"name": "kimi-k2.6:cloud",
-						"useFor": "vision"
+						"name": "kimi-k2.6:cloud"
 					}
 				]
 			}
@@ -105,10 +89,9 @@
 		"dmScope": "per-channel-peer"
 	},
 	"tools": {
-		"profile": "coding",
 		"web": {
 			"search": {
-				"enabled": false
+				"provider": "ollama"
 			}
 		}
 	}
