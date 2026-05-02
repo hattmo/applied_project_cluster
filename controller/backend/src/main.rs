@@ -472,6 +472,48 @@ async fn scale_agents(
 
     let api: Api<StatefulSet> = Api::namespaced(state.kube_client.clone(), state.namespace);
     
+    // Get current replicas before patching
+    let current_sts = api
+        .get("agent")
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to get current StatefulSet: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+    let current_replicas = current_sts.spec.replicas.unwrap_or(1) as i32;
+
+    // Handle Matrix room membership changes
+    let server_name = ServerName::parse(state.matrix_hostname).map_err(|e| {
+        tracing::error!("Failed to parse server name: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    if replicas < current_replicas {
+        // Scaling down - kick excess agents
+        for i in replicas..current_replicas {
+            let user_id = format!("agent_{}", i);
+            if let Ok(user) = UserId::parse_with_server_name(&user_id, &server_name) {
+                if let Err(e) = state.room.kick_user(&user, Some("Scaled down")).await {
+                    tracing::warn!("Failed to kick agent {}: {}", user_id, e);
+                } else {
+                    tracing::info!("Kicked agent {} from room (scale down)", user_id);
+                }
+            }
+        }
+    } else if replicas > current_replicas {
+        // Scaling up - invite new agents
+        for i in current_replicas..replicas {
+            let user_id = format!("agent_{}", i);
+            if let Ok(user) = UserId::parse_with_server_name(&user_id, &server_name) {
+                if let Err(e) = state.room.invite_user_by_id(&user).await {
+                    tracing::warn!("Failed to invite agent {}: {}", user_id, e);
+                } else {
+                    tracing::info!("Invited agent {} to room (scale up)", user_id);
+                }
+            }
+        }
+    }
+
     let patch = serde_json::json!({
         "spec": {
             "replicas": replicas
@@ -489,10 +531,10 @@ async fn scale_agents(
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
 
-    let current_replicas = result.spec.replicas.unwrap_or(1);
+    let new_replicas = result.spec.replicas.unwrap_or(1) as i32;
 
     Ok(Json(AgentScaleStatus {
-        current_replicas,
+        current_replicas: new_replicas,
         desired_replicas: replicas,
     }))
 }
