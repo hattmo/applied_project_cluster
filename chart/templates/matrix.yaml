@@ -118,8 +118,8 @@ spec:
             echo "ERROR: Could not find registration_shared_secret in config"
             exit 1
           fi
-      - name: generate-ca
-        image: alpine/openssl:latest
+      - name: init-ca
+        image: bitnami/kubectl:latest
         volumeMounts:
         - name: tls
           mountPath: /etc/nginx/ssl
@@ -127,15 +127,28 @@ spec:
         - "/bin/sh"
         - "-c"
         - |
-          echo "Generating CA certificate..."
-          # Generate CA private key
-          openssl genrsa -out /etc/nginx/ssl/ca.key 2048
-          # Generate CA certificate
-          openssl req -x509 -new -nodes -key /etc/nginx/ssl/ca.key \
-            -sha256 -days 3650 \
-            -out /etc/nginx/ssl/ca.crt \
-            -subj "/CN=npc.hattmo.com"
-          echo "CA certificate generated"
+          echo "Checking for existing CA in matrix-ca secret..."
+          if kubectl get secret matrix-ca -n {{ .Release.Namespace }} > /dev/null 2>&1; then
+            echo "CA exists, extracting from secret..."
+            kubectl get secret matrix-ca -n {{ .Release.Namespace }} -o jsonpath="{.data.ca\.crt}" | base64 -d > /etc/nginx/ssl/ca.crt
+            kubectl get secret matrix-ca -n {{ .Release.Namespace }} -o jsonpath="{.data.ca\.key}" | base64 -d > /etc/nginx/ssl/ca.key
+            echo "CA loaded from secret"
+          else
+            echo "No CA found, generating new CA..."
+            # Generate CA private key
+            openssl genrsa -out /etc/nginx/ssl/ca.key 2048
+            # Generate CA certificate
+            openssl req -x509 -new -nodes -key /etc/nginx/ssl/ca.key \
+              -sha256 -days 3650 \
+              -out /etc/nginx/ssl/ca.crt \
+              -subj "/CN=npc.hattmo.com"
+            echo "Creating matrix-ca secret..."
+            kubectl create secret generic matrix-ca \
+              --from-file=ca.crt=/etc/nginx/ssl/ca.crt \
+              --from-file=ca.key=/etc/nginx/ssl/ca.key \
+              --namespace={{ .Release.Namespace }}
+            echo "CA generated and secret created"
+          fi
       - name: generate-server-tls
         image: alpine/openssl:latest
         volumeMounts:
@@ -168,23 +181,6 @@ EOF
           echo "Server certificate generated and signed by CA"
           rm /etc/nginx/ssl/server.csr /tmp/san.cnf
           ls -la /etc/nginx/ssl/
-      - name: create-ca-secret
-        image: bitnami/kubectl:latest
-        volumeMounts:
-        - name: tls
-          mountPath: /etc/nginx/ssl
-          readOnly: true
-        command:
-        - "/bin/sh"
-        - "-c"
-        - |
-          echo "Creating matrix-ca secret in namespace {{ .Release.Namespace }}..."
-          kubectl create secret generic matrix-ca \
-            --from-file=ca.crt=/etc/nginx/ssl/ca.crt \
-            --from-file=ca.key=/etc/nginx/ssl/ca.key \
-            --namespace={{ .Release.Namespace }} \
-            --dry-run=client -o yaml | kubectl apply -f -
-          echo "matrix-ca secret created in {{ .Release.Namespace }}"
       containers:
       - name: synapse
         image: matrixdotorg/synapse:latest
