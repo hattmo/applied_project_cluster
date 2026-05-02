@@ -35,13 +35,24 @@ interface TaskQueue {
 // API base URL
 const API_BASE = '/api/v1'
 
+interface AgentScaleStatus {
+  current_replicas: number
+  desired_replicas: number
+}
+
 function App() {
-  const [activeTab, setActiveTab] = useState<'vms' | 'queues'>('vms')
+  const [activeTab, setActiveTab] = useState<'vms' | 'queues' | 'scale'>('vms')
   
   // Matrix agents state
   const [agents, setAgents] = useState<MatrixUser[]>([])
   const [agentsLoading, setAgentsLoading] = useState(true)
   const [agentsError, setAgentsError] = useState<string | null>(null)
+  
+  // Agent scaling state
+  const [scaleStatus, setScaleStatus] = useState<AgentScaleStatus | null>(null)
+  const [scaleLoading, setScaleLoading] = useState(false)
+  const [scaleError, setScaleError] = useState<string | null>(null)
+  const [desiredReplicas, setDesiredReplicas] = useState(1)
   
   // VM Configs state
   const [vmConfigs, setVmConfigs] = useState<VmConfig[]>([])
@@ -85,6 +96,13 @@ function App() {
   useEffect(() => {
     if (activeTab === 'queues') {
       fetchTaskQueues()
+    }
+  }, [activeTab])
+
+  // Load scale status when switching to scale tab
+  useEffect(() => {
+    if (activeTab === 'scale') {
+      fetchScaleStatus()
     }
   }, [activeTab])
 
@@ -137,6 +155,38 @@ function App() {
     } catch (err) {
       setQueueError(err instanceof Error ? err.message : 'Unknown error')
       setQueueLoading(false)
+    }
+  }
+
+  async function fetchScaleStatus() {
+    try {
+      const res = await fetch(`${API_BASE}/agents/scale`)
+      if (!res.ok) throw new Error('Failed to fetch scale status')
+      const data = await res.json()
+      setScaleStatus(data)
+      setDesiredReplicas(data.current_replicas)
+      setScaleLoading(false)
+    } catch (err) {
+      setScaleError(err instanceof Error ? err.message : 'Unknown error')
+      setScaleLoading(false)
+    }
+  }
+
+  async function scaleAgents(replicas: number) {
+    setScaleLoading(true)
+    try {
+      const res = await fetch(`${API_BASE}/agents/scale`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ replicas }),
+      })
+      if (!res.ok) throw new Error('Failed to scale agents')
+      const data = await res.json()
+      setScaleStatus(data)
+      setScaleLoading(false)
+    } catch (err) {
+      setScaleError(err instanceof Error ? err.message : 'Unknown error')
+      setScaleLoading(false)
     }
   }
 
@@ -310,6 +360,12 @@ function App() {
           onClick={() => setActiveTab('queues')}
         >
           Task Queues
+        </button>
+        <button 
+          className={`tab ${activeTab === 'scale' ? 'active' : ''}`}
+          onClick={() => setActiveTab('scale')}
+        >
+          Scale Agents
         </button>
       </div>
 
@@ -580,6 +636,56 @@ function App() {
                 </div>
               ))}
             </div>
+          )}
+        </div>
+      )}
+
+      {/* Scale Agents Tab */}
+      {activeTab === 'scale' && (
+        <div className="card">
+          <div className="card-header">
+            <h2>Scale Agents</h2>
+          </div>
+
+          {scaleLoading ? (
+            <p>Loading...</p>
+          ) : scaleError ? (
+            <p className="error">Error: {scaleError}</p>
+          ) : scaleStatus ? (
+            <div className="scale-container">
+              <div className="scale-info">
+                <p>Current replicas: <strong>{scaleStatus.current_replicas}</strong></p>
+                <p>Desired replicas: <strong>{scaleStatus.desired_replicas}</strong></p>
+              </div>
+
+              <div className="scale-controls">
+                <label>Number of agents (1-5):</label>
+                <input
+                  type="range"
+                  min="1"
+                  max="5"
+                  value={desiredReplicas}
+                  onChange={(e) => setDesiredReplicas(parseInt(e.target.value))}
+                  className="scale-slider"
+                />
+                <div className="scale-values">
+                  <span>1</span>
+                  <span>2</span>
+                  <span>3</span>
+                  <span>4</span>
+                  <span>5</span>
+                </div>
+                <button 
+                  className="btn btn-primary"
+                  onClick={() => scaleAgents(desiredReplicas)}
+                  disabled={scaleLoading}
+                >
+                  {scaleLoading ? 'Scaling...' : 'Apply'}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <p className="empty">Unable to load scale status</p>
           )}
         </div>
       )}

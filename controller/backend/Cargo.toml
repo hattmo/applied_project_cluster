@@ -22,6 +22,8 @@ tokio-util = "0.7.18"
 reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
 hex = "0.4"
 hmac-sha1-compact = "1.1.7"
+kube = { version = "0.92", features = ["runtime", "derive"] }
+k8s-openapi = { version = "0.22", features = ["v1_30"] }
 
 [profile.release]
 opt-level = 3

@@ -1,3 +1,29 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: controller
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: controller-scaler
+rules:
+- apiGroups: ["apps"]
+  resources: ["statefulsets"]
+  verbs: ["get", "patch", "update"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: controller-binding
+subjects:
+- kind: ServiceAccount
+  name: controller
+roleRef:
+  kind: Role
+  name: controller-scaler
+  apiGroup: rbac.authorization.k8s.io
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -14,6 +40,7 @@ spec:
       labels:
         app: controller
     spec:
+      serviceAccountName: controller
       containers:
       - name: controller
         image: hattmo/controller:{{ .Values.images.controller.tag }}
@@ -36,6 +63,8 @@ spec:
           value: "matrix.{{ .Release.Namespace }}.svc.cluster.local"
         - name: VMWARE_GATEWAY_HOSTNAME
           value: "vmware-gateway"
+        - name: NAMESPACE
+          value: "{{ .Release.Namespace }}"
         - name: MATRIX_SECRET
           valueFrom:
             secretKeyRef:

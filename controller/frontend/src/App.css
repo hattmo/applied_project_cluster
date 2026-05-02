@@ -298,3 +298,74 @@ h1 {
   padding: 0.15rem 0.4rem;
   border-radius: 3px;
 }
+
+/* Scale Agents Tab */
+.scale-container {
+  padding: 1rem 0;
+}
+
+.scale-info {
+  display: flex;
+  gap: 2rem;
+  margin-bottom: 2rem;
+  padding: 1rem;
+  background: #f9f9f9;
+  border-radius: 6px;
+}
+
+.scale-info p {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.scale-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  align-items: center;
+}
+
+.scale-controls label {
+  font-size: 1rem;
+  font-weight: 500;
+  color: #333;
+}
+
+.scale-slider {
+  width: 100%;
+  max-width: 400px;
+  height: 8px;
+  -webkit-appearance: none;
+  appearance: none;
+  background: #e0e0e0;
+  border-radius: 4px;
+  outline: none;
+}
+
+.scale-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 24px;
+  height: 24px;
+  background: #3b82f6;
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.scale-slider::-moz-range-thumb {
+  width: 24px;
+  height: 24px;
+  background: #3b82f6;
+  border-radius: 50%;
+  cursor: pointer;
+  border: none;
+}
+
+.scale-values {
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+  max-width: 400px;
+  color: #666;
+  font-size: 0.85rem;
+}

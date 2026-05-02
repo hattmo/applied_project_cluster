@@ -5,6 +5,11 @@ use axum::{
     response::Json,
     routing::{delete, get, post, put},
 };
+use kube::{
+    api::{Api, Patch, PatchParams},
+    Client as KubeClient,
+};
+use k8s_openapi::api::apps::v1::StatefulSet;
 use matrix_sdk::{
     Client, Room, RoomMemberships, ServerName,
     ruma::{RoomOrAliasId, UserId, api::client::room::create_room},
@@ -37,6 +42,8 @@ struct AppState {
     client: Client,
     room: Room,
     matrix_state: MatrixState,
+    kube_client: KubeClient,
+    namespace: &'static str,
 }
 
 #[derive(Clone)]
@@ -324,6 +331,8 @@ async fn setup() -> anyhow::Result<()> {
         room.clone(),
         matrix_state.clone(),
     ));
+    let namespace: &'static str = std::env::var("NAMESPACE").unwrap_or("npc-dev").leak();
+    let kube_client = KubeClient::try_default().await?;
     let state = AppState {
         version: env!("CARGO_PKG_VERSION"),
         matrix_hostname,
@@ -335,6 +344,8 @@ async fn setup() -> anyhow::Result<()> {
         room,
         matrix_state,
         username,
+        kube_client,
+        namespace,
     };
     tracing::info!("Seting up routes");
     let app = Router::new()
@@ -350,6 +361,7 @@ async fn setup() -> anyhow::Result<()> {
         .route("/api/v1/task-queues/:id", get(get_task_queue))
         .route("/api/v1/task-queues/:id", put(update_task_queue))
         .route("/api/v1/task-queues/:id", delete(delete_task_queue))
+        .route("/api/v1/agents/scale", put(scale_agents))
         .nest_service(
             "/",
             ServeDir::new("/app/frontend/static").append_index_html_on_directories(true),
@@ -436,6 +448,53 @@ async fn status_handler(State(state): State<AppState>) -> Json<HealthResponse> {
 async fn list_agents(State(state): State<AppState>) -> Json<Box<[MatrixUser]>> {
     let members = state.matrix_state.room_members.read().await;
     Json(members.clone())
+}
+
+#[derive(Serialize)]
+struct AgentScaleStatus {
+    current_replicas: i32,
+    desired_replicas: i32,
+}
+
+#[derive(Deserialize)]
+struct ScaleAgentsRequest {
+    replicas: i32,
+}
+
+async fn scale_agents(
+    State(state): State<AppState>,
+    Json(payload): Json<ScaleAgentsRequest>,
+) -> Result<Json<AgentScaleStatus>, StatusCode> {
+    let replicas = payload.replicas;
+    if replicas < 1 || replicas > 5 {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+
+    let api: Api<StatefulSet> = Api::namespaced(state.kube_client.clone(), state.namespace);
+    
+    let patch = serde_json::json!({
+        "spec": {
+            "replicas": replicas
+        }
+    });
+
+    let patch_params = PatchParams::apply("controller-agent-scaler");
+    let patch = Patch::Apply(&patch);
+
+    let result = api
+        .patch("agent", &patch_params, &patch)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to scale agents: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    let current_replicas = result.spec.replicas.unwrap_or(1);
+
+    Ok(Json(AgentScaleStatus {
+        current_replicas,
+        desired_replicas: replicas,
+    }))
 }
 
 // VMware VM handlers
