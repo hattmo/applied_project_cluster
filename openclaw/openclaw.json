@@ -63,12 +63,29 @@
 						},
 						"id": "qwen3.5:cloud",
 						"input": [
-							"text",
-							"image"
+							"text"
 						],
 						"maxTokens": 32768,
 						"name": "qwen3.5:cloud",
-						"reasoning": true
+						"reasoning": true,
+						"useFor": "text"
+					},
+					{
+						"contextWindow": 32768,
+						"cost": {
+							"cacheRead": 0,
+							"cacheWrite": 0,
+							"input": 0,
+							"output": 0
+						},
+						"id": "llava:latest",
+						"input": [
+							"text",
+							"image"
+						],
+						"maxTokens": 4096,
+						"name": "llava:latest",
+						"useFor": "vision"
 					}
 				]
 			}
