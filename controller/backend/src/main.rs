@@ -163,6 +163,7 @@ async fn create_client(
         shared_secret,
         password,
         username,
+        true,
         &http_client,
     )
     .await?;
@@ -181,6 +182,7 @@ async fn create_account(
     shared_secret: &str,
     password: &str,
     username: &str,
+    admin: bool,
     http_client: &HttpClient,
 ) -> Result<(), anyhow::Error> {
     let register_url = format!("https://{}/_synapse/admin/v1/register", matrix_hostname);
@@ -196,6 +198,11 @@ async fn create_account(
         .and_then(|v| v.as_str())
         .ok_or_else(|| anyhow::anyhow!("No nonce in response"))?;
     tracing::debug!(?shared_secret, %username, %password, "Creating new user");
+    let admin_bytes = if admin {
+        b"admin".as_slice()
+    } else {
+        &b"notadmin".as_slice()
+    };
     let bytes = [
         nonce.as_bytes(),
         b"\0",
@@ -203,7 +210,7 @@ async fn create_account(
         b"\0",
         password.as_bytes(),
         b"\0",
-        b"admin",
+        admin_bytes,
     ];
     let bytes: Box<[u8]> = bytes.into_iter().flatten().copied().collect();
     let signature = hmac_sha1_compact::HMAC::mac(&bytes, shared_secret.as_bytes());
@@ -212,7 +219,7 @@ async fn create_account(
         "nonce": nonce,
         "username": username,
         "password": password,
-        "admin": true,
+        "admin": admin,
         "mac": signature
     });
     let response = http_client
@@ -266,6 +273,7 @@ async fn setup() -> anyhow::Result<()> {
             matrix_secret,
             format!("{matrix_password}_{i}").as_str(),
             format!("agent_{i}").as_str(),
+            false,
             &http_client,
         )
         .await
