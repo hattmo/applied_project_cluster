@@ -11,7 +11,7 @@ use matrix_sdk::{
 };
 use reqwest::Client as HttpClient;
 use serde::{Deserialize, Serialize};
-use std::{sync::Arc, time::Duration};
+use std::{process::ExitCode, sync::Arc, time::Duration};
 use tokio::{sync::RwLock, time::sleep};
 use tokio_util::sync::CancellationToken;
 use tower_http::{cors::CorsLayer, services::ServeDir, trace::TraceLayer};
@@ -212,7 +212,14 @@ async fn create_client(
 }
 
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
+async fn main() -> ExitCode {
+    if let Err(e) = setup().await {
+        tracing::error!(error=?e, "Fatal Error");
+        return ExitCode::FAILURE;
+    }
+    ExitCode::SUCCESS
+}
+async fn setup() -> anyhow::Result<()> {
     // Initialize tracing
     tracing_subscriber::registry()
         .with(
@@ -243,7 +250,7 @@ async fn main() -> anyhow::Result<()> {
     };
 
     let token = CancellationToken::new();
-
+    tracing::info!("Starting background job");
     let background_job = tokio::spawn(sync_matrix_room(
         token.clone(),
         client.clone(),
@@ -267,7 +274,7 @@ async fn main() -> anyhow::Result<()> {
         matrix_state,
         username,
     };
-
+    tracing::info!("Seting up routes");
     let app = Router::new()
         .route("/api/v1/agents", get(list_agents))
         .route("/api/v1/vms", get(list_vms))
@@ -290,7 +297,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/v1/status", get(status_handler))
         .layer(CorsLayer::permissive())
         .with_state(state);
-
+    tracing::info!("Setting up listener");
     let listener = tokio::net::TcpListener::bind("0.0.0.0:8080").await?;
 
     tracing::info!(
@@ -302,6 +309,8 @@ async fn main() -> anyhow::Result<()> {
     );
 
     let serve = axum::serve(listener, app).with_graceful_shutdown(token.cancelled_owned());
+
+    tracing::info!("Server starting");
     serve.await?;
     background_job.await??;
     Ok(())
