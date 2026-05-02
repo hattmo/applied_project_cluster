@@ -11,8 +11,8 @@
 		"matrix": {
 			"enabled": true,
 			"homeserver": "http://matrix.npc.svc.cluster.local",
-			"userId": "${MATRIX_USER}",
-			"password": "${MATRIX_PASSWORD}",
+			"userId": "${MATRIX_USERNAME}_${INDEX}",
+			"password": "${MATRIX_PASSWORD}_${INDEX}",
 			"dm": {
 				"policy": "allowlist",
 				"allowFrom": [

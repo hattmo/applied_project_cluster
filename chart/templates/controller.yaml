@@ -45,7 +45,7 @@ spec:
           valueFrom:
             secretKeyRef:
               name: creds
-              key: controller-matrix-password
+              key: matrix-password
 ---
 apiVersion: v1
 kind: Service
