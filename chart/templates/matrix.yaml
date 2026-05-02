@@ -29,11 +29,13 @@ kind: ConfigMap
 metadata:
   name: matrix-well-known
 data:
-  server: '{"m.server":"matrix:80"}'
-  client: '{"m.homeserver":{"base_url":"http://matrix"}}'
+  server: '{"m.server":"matrix.npc.svc.cluster.local:443"}'
+  client: '{"m.homeserver":{"base_url":"https://matrix.npc.svc.cluster.local"}}'
   nginx.conf: |
     server {
-        listen 8080;
+        listen 8443 ssl;
+        ssl_certificate /etc/nginx/ssl/tls.crt;
+        ssl_certificate_key /etc/nginx/ssl/tls.key;
         
         location /.well-known/matrix/server {
             default_type application/json;
@@ -129,12 +131,15 @@ spec:
       - name: well-known
         image: nginx:alpine
         ports:
-        - containerPort: 8080
+        - containerPort: 8443
         volumeMounts:
         - name: well-known
           mountPath: /usr/share/nginx/html/.well-known/matrix
         - name: nginx-config
           mountPath: /etc/nginx/conf.d
+        - name: tls
+          mountPath: /etc/nginx/ssl
+          readOnly: true
         resources:
           requests:
             memory: "32Mi"
@@ -145,13 +150,15 @@ spec:
         livenessProbe:
           httpGet:
             path: /.well-known/matrix/server
-            port: 8080
+            port: 8443
+            scheme: HTTPS
           initialDelaySeconds: 5
           periodSeconds: 10
         readinessProbe:
           httpGet:
             path: /.well-known/matrix/server
-            port: 8080
+            port: 8443
+            scheme: HTTPS
           initialDelaySeconds: 3
           periodSeconds: 5
       volumes:
@@ -172,6 +179,10 @@ spec:
           items:
           - key: nginx.conf
             path: default.conf
+      - name: tls
+        secret:
+          secretName: matrix-tls
+          optional: true
 ---
 apiVersion: v1
 kind: Service
@@ -182,9 +193,9 @@ spec:
   selector:
     app: matrix
   ports:
-  - port: 80
-    targetPort: 8080
-    name: http
+  - port: 443
+    targetPort: 8443
+    name: https
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
