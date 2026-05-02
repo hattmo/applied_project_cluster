@@ -152,6 +152,20 @@ spec:
   ports:
   - port: 80
     targetPort: 8008
+    name: synapse
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: matrix-well-known
+spec:
+  type: ClusterIP
+  selector:
+    app: matrix
+  ports:
+  - port: 80
+    targetPort: 8080
+    name: well-known
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
