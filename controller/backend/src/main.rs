@@ -364,7 +364,7 @@ async fn setup() -> anyhow::Result<()> {
         .route("/api/v1/task-queues/:id", put(update_task_queue))
         .route("/api/v1/task-queues/:id", delete(delete_task_queue))
         .route("/api/v1/agents/scale", put(update_scale_agents))
-        .route("/api/v1/agents/scale", put(get_scale_agents))
+        .route("/api/v1/agents/scale", get(get_scale_agents))
         .nest_service(
             "/",
             ServeDir::new("/app/frontend/static").append_index_html_on_directories(true),
