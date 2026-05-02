@@ -130,6 +130,7 @@ async fn create_client(
     let username = "controller";
     let client = Client::builder()
         .server_name(&ServerName::parse(matrix_hostname)?)
+        .disable_ssl_verification()
         .build()
         .await?;
     let test_result = client
