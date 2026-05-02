@@ -144,7 +144,22 @@ spec:
             -addext "subjectAltName=DNS:$CN,DNS:matrix,DNS:matrix.${POD_NAMESPACE}.svc.cluster.local"
           echo "Certificate generated successfully"
           ls -la /etc/nginx/ssl/
-          echo "Creating matrix-ca secret..."
+      - name: create-ca-secret
+        image: bitnami/kubectl:latest
+        volumeMounts:
+        - name: tls
+          mountPath: /etc/nginx/ssl
+          readOnly: true
+        env:
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        command:
+        - "/bin/sh"
+        - "-c"
+        - |
+          echo "Creating matrix-ca secret from generated certificate..."
           kubectl create secret generic matrix-ca \
             --from-file=ca.crt=/etc/nginx/ssl/tls.crt \
             --dry-run=client -o yaml | kubectl apply -f -
