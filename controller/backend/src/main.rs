@@ -423,7 +423,7 @@ async fn sync_matrix_room(
 
     loop {
         if let None = token
-            .run_until_cancelled(sleep(Duration::from_mins(10)))
+            .run_until_cancelled(sleep(Duration::from_secs(60)))
             .await
         {
             break;
