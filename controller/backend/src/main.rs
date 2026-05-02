@@ -17,6 +17,7 @@ use tokio_util::sync::CancellationToken;
 use tower_http::{cors::CorsLayer, services::ServeDir, trace::TraceLayer};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 struct MatrixError {
     errcode: String,
@@ -32,6 +33,7 @@ struct AppState {
     vm_configs: Arc<RwLock<Vec<VmConfig>>>,
     task_queues: Arc<RwLock<Vec<TaskQueue>>>,
     http_client: HttpClient,
+    #[allow(dead_code)]
     client: Client,
     matrix_state: MatrixState,
 }
@@ -120,12 +122,6 @@ struct UpdateTaskQueue {
     enabled: Option<bool>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct MatrixCredentials {
-    username: String,
-    password: String,
-}
-
 async fn create_client(
     matrix_hostname: &str,
     shared_secret: &str,
@@ -133,7 +129,7 @@ async fn create_client(
 ) -> anyhow::Result<(Client, &'static str)> {
     let username = "controller";
     let client = Client::builder()
-        .insecure_server_name_no_tls(&ServerName::parse(matrix_hostname)?)
+        .server_name(&ServerName::parse(matrix_hostname)?)
         .build()
         .await?;
     let test_result = client
@@ -151,7 +147,7 @@ async fn create_client(
     let http_client = HttpClient::builder()
         .timeout(Duration::from_secs(30))
         .build()?;
-    let register_url = format!("http://{}/_synapse/admin/v1/register", matrix_hostname);
+    let register_url = format!("https://{}/_synapse/admin/v1/register", matrix_hostname);
 
     let nonce_response = http_client
         .get(&register_url)

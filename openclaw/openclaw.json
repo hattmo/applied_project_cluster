@@ -10,13 +10,13 @@
 	"channels": {
 		"matrix": {
 			"enabled": true,
-			"homeserver": "http://matrix.npc.svc.cluster.local",
+			"homeserver": "https://${MATRIX_HOSTNAME}",
 			"userId": "${MATRIX_USERNAME}_${INDEX}",
 			"password": "${MATRIX_PASSWORD}_${INDEX}",
 			"dm": {
 				"policy": "allowlist",
 				"allowFrom": [
-					"@controller:matrix.npc.svc.cluster.local"
+					"@controller:${MATRIX_HOSTNAME}"
 				]
 			},
 			"encryption": true,

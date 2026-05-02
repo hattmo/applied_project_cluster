@@ -76,6 +76,8 @@ spec:
           value: /home/node
         - name: TZ
           value: UTC
+        - name: MATRIX_HOSTNAME
+          value: matrix.{{ .Release.Namespace }}.svc.cluster.local
         - name: MATRIX_USERNAME
           value: agent
         - name: MATRIX_PASSWORD
