@@ -7,10 +7,10 @@ interface MatrixUser {
   display_name: string | null
 }
 
-interface VmConfig {
+interface AgentAssignment {
   id: string
-  name: string
-  user_id: string
+  agent_name: string
+  vm_name: string
   enabled: boolean
   created_at: string
   updated_at: string
@@ -24,8 +24,8 @@ interface Task {
 
 interface TaskQueue {
   id: string
-  vm_id: string
   name: string
+  vm_name: string
   tasks: Task[]
   enabled: boolean
   created_at: string
@@ -40,7 +40,7 @@ interface AgentScaleStatus {
 }
 
 function App() {
-  const [activeTab, setActiveTab] = useState<'vms' | 'queues' | 'scale'>('vms')
+  const [activeTab, setActiveTab] = useState<'assignments' | 'queues' | 'scale'>('assignments')
   
   // Matrix agents state
   const [agents, setAgents] = useState<MatrixUser[]>([])
@@ -53,14 +53,14 @@ function App() {
   const [scaleError, setScaleError] = useState<string | null>(null)
   const [desiredReplicas, setDesiredReplicas] = useState(1)
   
-  // VM Configs state
-  const [vmConfigs, setVmConfigs] = useState<VmConfig[]>([])
-  const [vmLoading, setVmLoading] = useState(true)
-  const [vmError, setVmError] = useState<string | null>(null)
-  const [showVmForm, setShowVmForm] = useState(false)
-  const [newVmName, setNewVmName] = useState('')
-  const [newVmUserId, setNewVmUserId] = useState('')
-  const [editingVm, setEditingVm] = useState<VmConfig | null>(null)
+  // Agent Assignments state
+  const [assignments, setAssignments] = useState<AgentAssignment[]>([])
+  const [assignmentsLoading, setAssignmentsLoading] = useState(true)
+  const [assignmentsError, setAssignmentsError] = useState<string | null>(null)
+  const [showAssignmentForm, setShowAssignmentForm] = useState(false)
+  const [newAssignmentAgentName, setNewAssignmentAgentName] = useState('')
+  const [newAssignmentVmName, setNewAssignmentVmName] = useState('')
+  const [editingAssignment, setEditingAssignment] = useState<AgentAssignment | null>(null)
   
   // Available VMs from vmware_gateway
   const [availableVms, setAvailableVms] = useState<string[]>([])
@@ -72,7 +72,7 @@ function App() {
   const [queueError, setQueueError] = useState<string | null>(null)
   const [showQueueForm, setShowQueueForm] = useState(false)
   const [newQueueName, setNewQueueName] = useState('')
-  const [newQueueVmId, setNewQueueVmId] = useState('')
+  const [newQueueVmName, setNewQueueVmName] = useState('')
   const [editingQueue, setEditingQueue] = useState<TaskQueue | null>(null)
   
   // New task state
@@ -86,9 +86,9 @@ function App() {
     fetchAvailableVms()
   }, [])
 
-  // Load VM Configs
+  // Load Agent Assignments
   useEffect(() => {
-    fetchVmConfigs()
+    fetchAssignments()
   }, [])
 
   // Load Task Queues when switching to queues tab
@@ -131,16 +131,16 @@ function App() {
     }
   }
 
-  async function fetchVmConfigs() {
+  async function fetchAssignments() {
     try {
-      const res = await fetch(`${API_BASE}/vm-configs`)
-      if (!res.ok) throw new Error('Failed to fetch VM configs')
+      const res = await fetch(`${API_BASE}/agent-assignments`)
+      if (!res.ok) throw new Error('Failed to fetch agent assignments')
       const data = await res.json()
-      setVmConfigs(data)
-      setVmLoading(false)
+      setAssignments(data)
+      setAssignmentsLoading(false)
     } catch (err) {
-      setVmError(err instanceof Error ? err.message : 'Unknown error')
-      setVmLoading(false)
+      setAssignmentsError(err instanceof Error ? err.message : 'Unknown error')
+      setAssignmentsLoading(false)
     }
   }
 
@@ -189,46 +189,46 @@ function App() {
     }
   }
 
-  async function createVmConfig() {
+  async function createAssignment() {
     try {
-      const res = await fetch(`${API_BASE}/vm-configs`, {
+      const res = await fetch(`${API_BASE}/agent-assignments`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: newVmName, user_id: newVmUserId, enabled: true }),
+        body: JSON.stringify({ agent_name: newAssignmentAgentName, vm_name: newAssignmentVmName, enabled: true }),
       })
-      if (!res.ok) throw new Error('Failed to create VM config')
-      await fetchVmConfigs()
-      setNewVmName('')
-      setNewVmUserId('')
-      setShowVmForm(false)
+      if (!res.ok) throw new Error('Failed to create assignment')
+      await fetchAssignments()
+      setNewAssignmentAgentName('')
+      setNewAssignmentVmName('')
+      setShowAssignmentForm(false)
     } catch (err) {
-      setVmError(err instanceof Error ? err.message : 'Unknown error')
+      setAssignmentsError(err instanceof Error ? err.message : 'Unknown error')
     }
   }
 
-  async function updateVmConfig(id: string, updates: Partial<VmConfig>) {
+  async function updateAssignment(id: string, updates: Partial<AgentAssignment>) {
     try {
-      const res = await fetch(`${API_BASE}/vm-configs/${id}`, {
+      const res = await fetch(`${API_BASE}/agent-assignments/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updates),
       })
-      if (!res.ok) throw new Error('Failed to update VM config')
-      await fetchVmConfigs()
-      setEditingVm(null)
+      if (!res.ok) throw new Error('Failed to update assignment')
+      await fetchAssignments()
+      setEditingAssignment(null)
     } catch (err) {
-      setVmError(err instanceof Error ? err.message : 'Unknown error')
+      setAssignmentsError(err instanceof Error ? err.message : 'Unknown error')
     }
   }
 
-  async function deleteVmConfig(id: string) {
-    if (!confirm('Delete this VM config?')) return
+  async function deleteAssignment(id: string) {
+    if (!confirm('Delete this assignment?')) return
     try {
-      const res = await fetch(`${API_BASE}/vm-configs/${id}`, { method: 'DELETE' })
-      if (!res.ok) throw new Error('Failed to delete VM config')
-      await fetchVmConfigs()
+      const res = await fetch(`${API_BASE}/agent-assignments/${id}`, { method: 'DELETE' })
+      if (!res.ok) throw new Error('Failed to delete assignment')
+      await fetchAssignments()
     } catch (err) {
-      setVmError(err instanceof Error ? err.message : 'Unknown error')
+      setAssignmentsError(err instanceof Error ? err.message : 'Unknown error')
     }
   }
 
@@ -238,7 +238,7 @@ function App() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
-          vm_id: newQueueVmId, 
+          vm_name: newQueueVmName, 
           name: newQueueName, 
           tasks: [],
           enabled: true
@@ -247,7 +247,7 @@ function App() {
       if (!res.ok) throw new Error('Failed to create task queue')
       await fetchTaskQueues()
       setNewQueueName('')
-      setNewQueueVmId('')
+      setNewQueueVmName('')
       setShowQueueForm(false)
     } catch (err) {
       setQueueError(err instanceof Error ? err.message : 'Unknown error')
@@ -332,11 +332,6 @@ function App() {
     }
   }
 
-  function getVmName(vmId: string) {
-    const vm = vmConfigs.find(v => v.id === vmId)
-    return vm ? vm.name : vmId
-  }
-
   function getAgentDisplayName(userId: string) {
     const agent = agents.find(a => a.user_id === userId)
     if (!agent) return userId
@@ -349,8 +344,8 @@ function App() {
       
       <div className="tabs">
         <button 
-          className={`tab ${activeTab === 'vms' ? 'active' : ''}`}
-          onClick={() => setActiveTab('vms')}
+          className={`tab ${activeTab === 'assignments' ? 'active' : ''}`}
+          onClick={() => setActiveTab('assignments')}
         >
           Agent Assignments
         </button>
@@ -369,20 +364,40 @@ function App() {
       </div>
 
       {/* Agent Assignments Tab */}
-      {activeTab === 'vms' && (
+      {activeTab === 'assignments' && (
         <div className="card">
           <div className="card-header">
             <h2>Agent Assignments</h2>
-            <button className="btn btn-primary" onClick={() => setShowVmForm(!showVmForm)}>
-              {showVmForm ? 'Cancel' : '+ Add VM'}
+            <button className="btn btn-primary" onClick={() => setShowAssignmentForm(!showAssignmentForm)}>
+              {showAssignmentForm ? 'Cancel' : '+ Add Assignment'}
             </button>
           </div>
 
-          {showVmForm && (
+          {showAssignmentForm && (
             <div className="form">
               <select
-                value={newVmName}
-                onChange={(e) => setNewVmName(e.target.value)}
+                value={newAssignmentAgentName}
+                onChange={(e) => setNewAssignmentAgentName(e.target.value)}
+                className="input"
+              >
+                <option value="">Select Agent</option>
+                {agentsLoading ? (
+                  <option disabled>Loading agents...</option>
+                ) : agentsError ? (
+                  <option disabled>Error loading agents</option>
+                ) : agents.length === 0 ? (
+                  <option disabled>No agents available</option>
+                ) : (
+                  agents.map((agent) => (
+                    <option key={agent.user_id} value={agent.user_id}>
+                      {agent.display_name || agent.user_id}
+                    </option>
+                  ))
+                )}
+              </select>
+              <select
+                value={newAssignmentVmName}
+                onChange={(e) => setNewAssignmentVmName(e.target.value)}
                 className="input"
               >
                 <option value="">Select VM</option>
@@ -396,54 +411,25 @@ function App() {
                   ))
                 )}
               </select>
-              <select
-                value={newVmUserId}
-                onChange={(e) => setNewVmUserId(e.target.value)}
-                className="input"
-              >
-                <option value="">Select User</option>
-                {agentsLoading ? (
-                  <option disabled>Loading users...</option>
-                ) : agentsError ? (
-                  <option disabled>Error loading users</option>
-                ) : agents.length === 0 ? (
-                  <option disabled>No users available</option>
-                ) : (
-                  agents.map((agent) => (
-                    <option key={agent.user_id} value={agent.user_id}>
-                      {agent.display_name || agent.user_id}
-                    </option>
-                  ))
-                )}
-              </select>
-              <button className="btn btn-primary" onClick={createVmConfig}>Create</button>
+              <button className="btn btn-primary" onClick={createAssignment}>Create</button>
             </div>
           )}
 
-          {vmLoading ? (
+          {assignmentsLoading ? (
             <p>Loading...</p>
-          ) : vmError ? (
-            <p className="error">Error: {vmError}</p>
-          ) : vmConfigs.length === 0 ? (
-            <p className="empty">No VM configs yet. Add one to get started!</p>
+          ) : assignmentsError ? (
+            <p className="error">Error: {assignmentsError}</p>
+          ) : assignments.length === 0 ? (
+            <p className="empty">No assignments yet. Add one to get started!</p>
           ) : (
             <div className="list">
-              {vmConfigs.map((vm) => (
-                <div key={vm.id} className="list-item">
-                  {editingVm?.id === vm.id ? (
+              {assignments.map((assignment) => (
+                <div key={assignment.id} className="list-item">
+                  {editingAssignment?.id === assignment.id ? (
                     <div className="edit-form">
                       <select
-                        defaultValue={vm.name}
-                        onBlur={(e) => updateVmConfig(vm.id, { name: e.target.value })}
-                        className="input"
-                      >
-                        {availableVms.map((availVm) => (
-                          <option key={availVm} value={availVm}>{availVm}</option>
-                        ))}
-                      </select>
-                      <select
-                        defaultValue={vm.user_id}
-                        onBlur={(e) => updateVmConfig(vm.id, { user_id: e.target.value })}
+                        defaultValue={assignment.agent_name}
+                        onBlur={(e) => updateAssignment(assignment.id, { agent_name: e.target.value })}
                         className="input"
                       >
                         {agents.map((agent) => (
@@ -452,33 +438,42 @@ function App() {
                           </option>
                         ))}
                       </select>
+                      <select
+                        defaultValue={assignment.vm_name}
+                        onBlur={(e) => updateAssignment(assignment.id, { vm_name: e.target.value })}
+                        className="input"
+                      >
+                        {availableVms.map((vm) => (
+                          <option key={vm} value={vm}>{vm}</option>
+                        ))}
+                      </select>
                     </div>
                   ) : (
                     <div className="item-content">
                       <div>
-                        <strong>{vm.name}</strong>
-                        <span className="badge">User: {getAgentDisplayName(vm.user_id)}</span>
+                        <strong>{assignment.vm_name}</strong>
+                        <span className="badge">Agent: {getAgentDisplayName(assignment.agent_name)}</span>
                       </div>
-                      <span className={`status ${vm.enabled ? 'active' : 'inactive'}`}>
-                        {vm.enabled ? '● Active' : '○ Inactive'}
+                      <span className={`status ${assignment.enabled ? 'active' : 'inactive'}`}>
+                        {assignment.enabled ? '● Active' : '○ Inactive'}
                       </span>
                     </div>
                   )}
                   <div className="item-actions">
-                    {editingVm?.id === vm.id ? (
-                      <button className="btn btn-small" onClick={() => setEditingVm(null)}>Done</button>
+                    {editingAssignment?.id === assignment.id ? (
+                      <button className="btn btn-small" onClick={() => setEditingAssignment(null)}>Done</button>
                     ) : (
-                      <button className="btn btn-small" onClick={() => setEditingVm(vm)}>Edit</button>
+                      <button className="btn btn-small" onClick={() => setEditingAssignment(assignment)}>Edit</button>
                     )}
                     <button 
                       className="btn btn-small"
-                      onClick={() => updateVmConfig(vm.id, { enabled: !vm.enabled })}
+                      onClick={() => updateAssignment(assignment.id, { enabled: !assignment.enabled })}
                     >
-                      {vm.enabled ? 'Disable' : 'Enable'}
+                      {assignment.enabled ? 'Disable' : 'Enable'}
                     </button>
                     <button 
                       className="btn btn-small btn-danger"
-                      onClick={() => deleteVmConfig(vm.id)}
+                      onClick={() => deleteAssignment(assignment.id)}
                     >
                       Delete
                     </button>
@@ -503,13 +498,13 @@ function App() {
           {showQueueForm && (
             <div className="form">
               <select
-                value={newQueueVmId}
-                onChange={(e) => setNewQueueVmId(e.target.value)}
+                value={newQueueVmName}
+                onChange={(e) => setNewQueueVmName(e.target.value)}
                 className="input"
               >
                 <option value="">Select VM</option>
-                {vmConfigs.map((vm) => (
-                  <option key={vm.id} value={vm.id}>{vm.name}</option>
+                {assignments.map((a) => (
+                  <option key={a.id} value={a.vm_name}>{a.vm_name}</option>
                 ))}
               </select>
               <input
@@ -546,7 +541,7 @@ function App() {
                       <strong>{queue.name}</strong>
                     )}
                     <div className="item-meta">
-                      <span className="badge">VM: {getVmName(queue.vm_id)}</span>
+                      <span className="badge">VM: {queue.vm_name}</span>
                       <span className={`status ${queue.enabled ? 'active' : 'inactive'}`}>
                         {queue.enabled ? '● Active' : '○ Inactive'}
                       </span>
