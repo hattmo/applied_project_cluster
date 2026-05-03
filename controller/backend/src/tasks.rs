@@ -5,12 +5,9 @@ use axum::{
     extract::{Path, State},
     http::StatusCode,
 };
-use matrix_sdk::{
-    Room,
-    ruma::{
-        UserId,
-        events::{Mentions, room::message::RoomMessageEventContent},
-    },
+use matrix_sdk::ruma::{
+    UserId,
+    events::{Mentions, room::message::RoomMessageEventContent},
 };
 use serde::{Deserialize, Serialize};
 use tokio::time::sleep;
@@ -54,18 +51,15 @@ pub struct PatchTaskQueue {
 pub async fn sync_matrix_room(
     token: CancellationToken,
     AppState {
-        static_state,
         mutable_state:
             MutableState {
                 agent_assignments,
                 task_queues,
                 room_members,
-                replicas,
+                ..
             },
-        http_client,
-        matrix_client,
-        kube_client,
         room,
+        ..
     }: AppState,
 ) -> anyhow::Result<()> {
     let _drop = token.drop_guard_ref();
