@@ -13,7 +13,10 @@ use matrix_sdk::{
 };
 use reqwest::Client as HttpClient;
 use serde::{Deserialize, Serialize};
-use tokio::sync::RwLock;
+use tokio::sync::{
+    RwLock,
+    mpsc::{self, UnboundedSender},
+};
 use tokio_util::sync::CancellationToken;
 use tower_http::{cors::CorsLayer, services::ServeDir, trace::TraceLayer};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
@@ -80,6 +83,7 @@ struct AppState {
     matrix_client: MatrixClient,
     kube_client: KubeClient,
     room: Room,
+    notifier: UnboundedSender<()>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
@@ -267,6 +271,7 @@ async fn setup() -> anyhow::Result<()> {
         .ok_or(anyhow!("Failed to get replica count"))?;
 
     let mutable_state = MutableState::new(replica_count);
+    update_membership(&room, &mutable_state.room_members).await;
     for i in 0..5 {
         let username = format!("agent_{i}");
         let _ = create_account(
@@ -285,6 +290,7 @@ async fn setup() -> anyhow::Result<()> {
             let _ = room.kick_user(user_id, Some("Scaled down"));
         }
     }
+    let (notify_tx, notify_rx) = mpsc::unbounded_channel();
     let state = AppState {
         static_state,
         mutable_state,
@@ -292,10 +298,18 @@ async fn setup() -> anyhow::Result<()> {
         matrix_client,
         room,
         kube_client,
+        notifier: notify_tx,
     };
     let token = CancellationToken::new();
     tracing::info!("Starting background job");
-    let background_job = tokio::spawn(sync_matrix_room(token.clone(), state.clone()));
+
+    let spawn_token = token.clone();
+    let spawn_state = state.clone();
+    let background_job = tokio::spawn(async move {
+        spawn_token
+            .run_until_cancelled(sync_matrix_room(notify_rx, spawn_state))
+            .await;
+    });
 
     tracing::info!("Seting up routes");
     let app = Router::new()
@@ -342,8 +356,8 @@ async fn setup() -> anyhow::Result<()> {
     let serve = axum::serve(listener, app).with_graceful_shutdown(token.cancelled_owned());
 
     tracing::info!("Server starting");
-    serve.await?;
-    background_job.await??;
+    let _ = serve.await;
+    let _ = background_job.await;
     Ok(())
 }
 

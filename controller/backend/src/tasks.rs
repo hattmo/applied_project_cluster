@@ -10,8 +10,7 @@ use matrix_sdk::ruma::{
     events::{Mentions, room::message::RoomMessageEventContent},
 };
 use serde::{Deserialize, Serialize};
-use tokio::time::sleep;
-use tokio_util::sync::CancellationToken;
+use tokio::{sync::mpsc::UnboundedReceiver, time::timeout};
 
 use crate::{AppState, MutableState, update_membership};
 
@@ -49,7 +48,7 @@ pub struct PatchTaskQueue {
     enabled: Option<bool>,
 }
 pub async fn sync_matrix_room(
-    token: CancellationToken,
+    mut notifier_rx: UnboundedReceiver<()>,
     AppState {
         mutable_state:
             MutableState {
@@ -62,15 +61,8 @@ pub async fn sync_matrix_room(
         ..
     }: AppState,
 ) -> anyhow::Result<()> {
-    let _drop = token.drop_guard_ref();
-
     loop {
-        if let None = token
-            .run_until_cancelled(sleep(Duration::from_secs(600)))
-            .await
-        {
-            break;
-        };
+        let _ = timeout(Duration::from_secs(600), notifier_rx.recv()).await;
 
         tracing::info!("Starting worker tasks");
         tracing::info_span!("Updating room members");
@@ -107,7 +99,6 @@ pub async fn sync_matrix_room(
             };
         }
     }
-    Ok(())
 }
 
 fn build_prompt(task_queue: &TaskQueue, agent_name: &str) -> String {
@@ -159,7 +150,7 @@ pub async fn create_task_queue(
 
     let mut queues = state.mutable_state.task_queues.write().await;
     queues.push(queue.clone());
-
+    let _ = state.notifier.send(());
     (StatusCode::CREATED, Json(queue))
 }
 
@@ -199,6 +190,8 @@ pub async fn update_task_queue(
         queue.enabled = enabled;
     }
     queue.updated_at = chrono::Utc::now().to_rfc3339();
+
+    let _ = state.notifier.send(());
     Ok(Json(queue.clone()))
 }
 
