@@ -66,7 +66,7 @@ pub async fn sync_matrix_room(
 
     loop {
         if let None = token
-            .run_until_cancelled(sleep(Duration::from_secs(60)))
+            .run_until_cancelled(sleep(Duration::from_secs(600)))
             .await
         {
             break;
@@ -132,8 +132,8 @@ fn build_prompt(task_queue: &TaskQueue, agent_name: &str) -> String {
         )
         .collect();
     format!(
-        "@{}, I want you to perform the following task as described in the table below on the VM ({}). To perform these tasks utilize the vmware gateway at the url http://vmware-gateway. you should already know how to use that api based on tools in your context. The description is a description of the task, and if there are keystrokes try using those to accomplish your task but feel free to adjust if they dont work.  Remember which tasks you complete and when you see this message again compare what you have already done with what you still need to do and pick up where you left off.  If all the tasks are already completed start at the top of the list and do them again.  If you get stuck use judgment to try to complete the task in spirit.  The main point is to persistently send commands to the vm and try to work through issues: \n|Description|Keystrokes|delay|\n|:---:|:---:|:---:|\n{rows}",
-        agent_name, task_queue.vm_name
+        "@{0}, I want you to perform the following task as described in the table below on the VM ({1}). To perform these tasks utilize the vmware gateway at the url http://vmware-gateway:80. To get a screen shot use the http://vmware-gateway/api/{1}/screen. To send keyboard inputs use http://vmware-gateway/api/{1}/keyboard?keys=<keys to send>. you should already know how to use that api based on tools in your context. you can use plain text to send the keys for that string. you can also use special keys like <super> and <enter> etc. if you need those. The description is a description of the task, and if there are keystrokes try using those to accomplish your task but feel free to adjust if they dont work.  Remember which tasks you complete and when you see this message again compare what you have already done with what you still need to do and pick up where you left off.  If all the tasks are already completed start at the top of the list and do them again.  If you get stuck use judgment to try to complete the task in spirit.  The main point is to persistently send commands to the vm and try to work through issues: \n|Description|Keystrokes|delay|\n|:---:|:---:|:---:|\n{2}",
+        agent_name, task_queue.vm_name, rows
     )
 }
 
