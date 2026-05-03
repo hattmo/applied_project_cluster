@@ -6,7 +6,7 @@ use crate::AppState;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct VmList {
-    vm_names: Vec<String>,
+    vms: Vec<String>,
     count: usize,
     pattern: String,
 }
@@ -32,5 +32,5 @@ pub async fn list_vms(State(state): State<AppState>) -> Result<Json<Vec<String>>
         StatusCode::BAD_GATEWAY
     })?;
 
-    Ok(Json(vm_list.vm_names))
+    Ok(Json(vm_list.vms))
 }
