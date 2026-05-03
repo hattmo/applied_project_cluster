@@ -7,11 +7,23 @@ use kube::{
 use matrix_sdk::{ServerName, ruma::UserId};
 use serde::{Deserialize, Serialize};
 
-use crate::{AppState, get_replica_count};
+use crate::AppState;
 
 #[derive(Serialize, Deserialize)]
 pub struct AgentScale {
     replicas: i32,
+}
+
+pub async fn get_replica_count(api: &Api<StatefulSet>) -> Option<i32> {
+    let current_sts = api
+        .get("agent")
+        .await
+        .inspect_err(|e| {
+            tracing::error!("Failed to get current StatefulSet: {}", e);
+        })
+        .ok()?;
+    let current_replicas = current_sts.spec.and_then(|i| i.replicas)?;
+    Some(current_replicas)
 }
 
 pub async fn get_scale_agents(State(state): State<AppState>) -> Json<AgentScale> {
@@ -43,6 +55,7 @@ pub async fn update_scale_agents(
     })?;
 
     if replicas < current_replicas {
+        tracing::info!("Scaling down agent count");
         // Scaling down - kick excess agents
         for i in replicas..current_replicas {
             let user_id = format!("agent_{}", i);
@@ -55,6 +68,7 @@ pub async fn update_scale_agents(
             }
         }
     } else if replicas > current_replicas {
+        tracing::info!("Scaling up agent count");
         // Scaling up - invite new agents
         for i in current_replicas..replicas {
             let user_id = format!("agent_{}", i);
@@ -85,7 +99,10 @@ pub async fn update_scale_agents(
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
 
-    let new_replicas = result.spec.and_then(|i| i.replicas).unwrap_or(1);
+    let new_replicas = result
+        .spec
+        .and_then(|i| i.replicas)
+        .ok_or(StatusCode::INTERNAL_SERVER_ERROR)?;
     *stored_replicas = new_replicas;
     Ok(Json(AgentScale {
         replicas: new_replicas,

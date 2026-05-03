@@ -8,7 +8,7 @@ use axum::{
 use k8s_openapi::api::apps::v1::StatefulSet;
 use kube::{Client as KubeClient, api::Api};
 use matrix_sdk::{
-    Client, Room, RoomMemberships, ServerName,
+    Client as MatrixClient, Room, RoomMemberships, ServerName,
     ruma::{RoomOrAliasId, UserId, api::client::room::create_room},
 };
 use reqwest::Client as HttpClient;
@@ -25,21 +25,16 @@ mod scale;
 mod tasks;
 mod vms;
 
-use assignments::AgentAssignment;
-use tasks::TaskQueue;
-
-use crate::{
-    assignments::{
-        create_agent_assignment, delete_agent_assignment, get_agent_assignment,
-        list_agent_assignments, update_agent_assignment,
-    },
-    scale::{get_scale_agents, update_scale_agents},
-    tasks::{
-        create_task_queue, delete_task_queue, get_task_queue, list_task_queues, sync_matrix_room,
-        update_task_queue,
-    },
-    vms::list_vms,
+use assignments::{
+    AgentAssignment, create_agent_assignment, delete_agent_assignment, get_agent_assignment,
+    list_agent_assignments, update_agent_assignment,
 };
+use scale::{get_replica_count, get_scale_agents, update_scale_agents};
+use tasks::{
+    TaskQueue, create_task_queue, delete_task_queue, get_task_queue, list_task_queues,
+    sync_matrix_room, update_task_queue,
+};
+use vms::list_vms;
 
 #[allow(dead_code)]
 #[derive(Debug, Deserialize)]
@@ -81,7 +76,7 @@ struct AppState {
     static_state: StaticState,
     mutable_state: MutableState,
     http_client: HttpClient,
-    matrix_client: Client,
+    matrix_client: MatrixClient,
     kube_client: KubeClient,
     room: Room,
 }
@@ -109,13 +104,13 @@ async fn create_clients(
         secret,
         ..
     }: &StaticState,
-) -> anyhow::Result<(Client, HttpClient)> {
+) -> anyhow::Result<(MatrixClient, HttpClient)> {
     let ca_cert_path = std::env::var("MATRIX_CA_CERT")?;
     tracing::info!("Loading CA certificate from {}", ca_cert_path);
     let ca_cert_pem = fs::read(&ca_cert_path)?;
     let ca_cert = reqwest::Certificate::from_pem(&ca_cert_pem)?;
 
-    let client = Client::builder()
+    let client = MatrixClient::builder()
         .server_name(&ServerName::parse(matrix_hostname)?)
         .add_root_certificates(vec![ca_cert.clone()])
         .build()
@@ -289,13 +284,6 @@ async fn setup() -> anyhow::Result<()> {
             let _ = room.kick_user(user_id, Some("Scaled down"));
         }
     }
-    let token = CancellationToken::new();
-    tracing::info!("Starting background job");
-    let background_job = tokio::spawn(sync_matrix_room(
-        token.clone(),
-        room.clone(),
-        mutable_state.clone(),
-    ));
     let state = AppState {
         static_state,
         mutable_state,
@@ -304,6 +292,10 @@ async fn setup() -> anyhow::Result<()> {
         room,
         kube_client,
     };
+    let token = CancellationToken::new();
+    tracing::info!("Starting background job");
+    let background_job = tokio::spawn(sync_matrix_room(token.clone(), state.clone()));
+
     tracing::info!("Seting up routes");
     let app = Router::new()
         .route("/api/v1/agents", get(list_agents))
@@ -355,7 +347,7 @@ async fn setup() -> anyhow::Result<()> {
 }
 
 async fn create_room(
-    client: &Client,
+    client: &MatrixClient,
     owned_room_id: matrix_sdk::ruma::OwnedRoomOrAliasId,
     owned_server_name: &matrix_sdk::OwnedServerName,
 ) -> Result<Room, anyhow::Error> {
@@ -389,6 +381,7 @@ async fn update_membership(room: &Room, room_members: &Arc<RwLock<Box<[MatrixUse
         })
         .collect();
     members.sort();
+    tracing::info!(?members, "New member list");
     *room_members.write().await = members;
 }
 
@@ -415,16 +408,4 @@ async fn status_handler(State(state): State<AppState>) -> Json<HealthResponse> {
 async fn list_agents(State(state): State<AppState>) -> Json<Box<[MatrixUser]>> {
     let members = state.mutable_state.room_members.read().await;
     Json(members.clone())
-}
-
-async fn get_replica_count(api: &Api<StatefulSet>) -> Option<i32> {
-    let current_sts = api
-        .get("agent")
-        .await
-        .inspect_err(|e| {
-            tracing::error!("Failed to get current StatefulSet: {}", e);
-        })
-        .ok()?;
-    let current_replicas = current_sts.spec.and_then(|i| i.replicas)?;
-    Some(current_replicas)
 }

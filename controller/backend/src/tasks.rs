@@ -53,13 +53,20 @@ pub struct PatchTaskQueue {
 }
 pub async fn sync_matrix_room(
     token: CancellationToken,
-    room: Room,
-    MutableState {
-        room_members,
-        task_queues,
-        agent_assignments: vm_configs,
-        ..
-    }: MutableState,
+    AppState {
+        static_state,
+        mutable_state:
+            MutableState {
+                agent_assignments,
+                task_queues,
+                room_members,
+                replicas,
+            },
+        http_client,
+        matrix_client,
+        kube_client,
+        room,
+    }: AppState,
 ) -> anyhow::Result<()> {
     let _drop = token.drop_guard_ref();
 
@@ -71,7 +78,10 @@ pub async fn sync_matrix_room(
             break;
         };
 
+        tracing::info!("Starting worker tasks");
+        tracing::info_span!("Updating room members");
         update_membership(&room, &room_members).await;
+        tracing::info!(?task_queues, "Processing task queues");
         for queue in task_queues
             .read()
             .await
@@ -79,18 +89,19 @@ pub async fn sync_matrix_room(
             .filter(|queue| queue.enabled)
         {
             tracing::info!(?queue, "Enabled task");
-            let Some(agent_name) = vm_configs.read().await.iter().find_map(|i| {
-                if i.agent_name == queue.vm_name {
+            let Some(agent_name) = agent_assignments.read().await.iter().find_map(|i| {
+                if i.vm_name == queue.vm_name {
                     Some(i.agent_name.clone())
                 } else {
                     None
                 }
             }) else {
+                tracing::error!("No agent assigned to tasks for vm");
                 continue;
             };
             let queue_message = build_prompt(queue, &agent_name);
             tracing::info!(message = queue_message);
-            let Ok(user_id) = UserId::parse(agent_name.as_str()) else {
+            let Ok(user_id) = UserId::parse(&agent_name) else {
                 tracing::error!(agent_name, "Failed to parse UserID");
                 continue;
             };
