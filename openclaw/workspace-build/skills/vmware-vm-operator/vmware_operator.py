@@ -23,16 +23,12 @@ import requests
 # Configuration
 VMWARE_GATEWAY_URL = os.environ.get(
     "VMWARE_GATEWAY_URL",
-    "http://vmware-gateway.npc.svc.cluster.local"
+    "http://vmware-gateway"
 )
-VMWARE_SCREENSHOT_DIR = os.environ.get(
-    "VMWARE_SCREENSHOT_DIR",
-    "/tmp/vmware-screenshots"
-)
-VM_TASK_QUEUE_DIR = os.environ.get(
-    "VM_TASK_QUEUE_DIR",
-    "/tmp/vm-task-queues"
-)
+VMWARE_SCREENSHOT_DIR = "/tmp/vmware-screenshots"
+
+VM_TASK_QUEUE_DIR = "/tmp/vm-task-queues"
+
 VM_ANALYSIS_INTERVAL = int(os.environ.get("VM_ANALYSIS_INTERVAL", "5"))
 VM_MAX_RETRIES = int(os.environ.get("VM_MAX_RETRIES", "3"))
 VM_ACTION_DELAY = int(os.environ.get("VM_ACTION_DELAY", "2"))

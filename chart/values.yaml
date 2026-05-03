@@ -5,6 +5,6 @@ images:
   controller:
     tag: "0.1.28"
   openclaw:
-    tag: "0.1.10"
+    tag: "0.1.11"
   vmwareGateway:
     tag: "0.1.1"
