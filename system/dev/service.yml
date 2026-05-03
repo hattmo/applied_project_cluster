@@ -38,7 +38,7 @@ metadata:
 spec:
   type: LoadBalancer
   selector:
-    app: vmware-gateway
+    app: vmware
   ports:
   - port: 80
     targetPort: 8080
