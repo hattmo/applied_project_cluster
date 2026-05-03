@@ -36,7 +36,7 @@ interface TaskQueue {
 const API_BASE = '/api/v1'
 
 interface AgentScaleStatus {
-  current_replicas: number
+  replicas: number
 }
 
 function App() {
@@ -163,7 +163,7 @@ function App() {
       if (!res.ok) throw new Error('Failed to fetch scale status')
       const data = await res.json()
       setScaleStatus(data)
-      setDesiredReplicas(data.current_replicas)
+      setDesiredReplicas(data.replicas)
       setScaleLoading(false)
     } catch (err) {
       setScaleError(err instanceof Error ? err.message : 'Unknown error')
@@ -648,7 +648,7 @@ function App() {
           ) : scaleStatus ? (
             <div className="scale-container">
               <div className="scale-info">
-                <p>Current replicas: <strong>{scaleStatus.current_replicas}</strong></p>
+                <p>Current replicas: <strong>{scaleStatus.replicas}</strong></p>
               </div>
 
               <div className="scale-controls">
