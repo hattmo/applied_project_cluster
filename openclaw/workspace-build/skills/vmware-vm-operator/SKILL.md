@@ -1,6 +1,6 @@
-# VMware VM Operator Skill
+# VMware VM Operator Skill - Autonomous Edition
 
-Remotely operate VMware vSphere virtual machines through the vmware-gateway API. Provides both basic control tools and autonomous operation capabilities.
+Remotely operate VMware vSphere virtual machines through the vmware-gateway API with full autonomous operation powered by computer vision.
 
 ## Location
 
@@ -8,70 +8,119 @@ Remotely operate VMware vSphere virtual machines through the vmware-gateway API.
 
 ## Description
 
-This skill enables OpenClaw to:
+This skill enables OpenClaw to autonomously operate VMs by:
 
-- **Capture VM screenshots** - See what's on the VM display
-- **Send keyboard input** - Type text, press special keys, send shortcuts
-- **Operate autonomously** - Run continuous observation/action loops
-- **Execute task lists** - Work through objectives indefinitely
-- **Analyze state** - Determine VM state from screenshots
-- **Make decisions** - Choose appropriate actions for each situation
+- **Polling the controller** for VM assignments and task queues
+- **Capturing VM screenshots** via vmware-gateway API
+- **Analyzing screens with Ollama vision models** (llava, bakllava, moondream)
+- **Deciding keystrokes** based on visual analysis and task context
+- **Sending keyboard input** via vmware-gateway API
+- **Running continuous observation/action loops** indefinitely
+
+## Architecture
+
+```
+┌─────────────────┐     ┌──────────────────┐     ┌─────────────────┐
+│   Controller    │────▶│   OpenClaw      │────▶│  VMware Gateway │
+│  (task queues)  │     │   Agent          │     │  (screen/keys)  │
+└─────────────────┘     └────────┬─────────┘     └─────────────────┘
+                                 │
+                                 ▼
+                        ┌──────────────────┐
+                        │   Ollama Vision  │
+                        │   (llava, etc.)  │
+                        └──────────────────┘
+```
 
 ## Core Loop
 
 ```
-┌─────────────────┐
-│  Get Task List  │
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────┐
-│ Capture Screen  │ ←─── vmware_screenshot()
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────┐
-│ Analyze State   │ ←─── What do I see?
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────┐
-│ Decide Action   │ ←─── What keys to send?
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────┐
-│ Send Keys       │ ←─── vmware_send_keys()
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────┐
-│ Update Progress │
-└────────┬────────┘
-         │
-         └──────┐
-                │
-                ▼
-         (repeat loop)
+┌─────────────────────────┐
+│ 1. Poll Controller      │
+│    - Get assignment     │
+│    - Get task queue     │
+└───────────┬─────────────┘
+            │
+            ▼
+┌─────────────────────────┐
+│ 2. Capture Screenshot   │ ←─── vmware_screenshot()
+│    /api/<vm>/screen     │
+└───────────┬─────────────┘
+            │
+            ▼
+┌─────────────────────────┐
+│ 3. Vision Analysis      │ ←─── ollama_analyze_screenshot()
+│    What do I see?       │
+└───────────┬─────────────┘
+            │
+            ▼
+┌─────────────────────────┐
+│ 4. Decide Keystrokes    │ ←─── decide_keystrokes()
+│    What keys to send?   │
+└───────────┬─────────────┘
+            │
+            ▼
+┌─────────────────────────┐
+│ 5. Send Keys            │ ←─── vmware_send_keys()
+│    /api/<vm>/keyboard   │
+└───────────┬─────────────┘
+            │
+            ▼
+┌─────────────────────────┐
+│ 6. Wait & Repeat        │
+└─────────────────────────┘
 ```
 
 ## Tools
 
-### Basic Control
+### Controller Integration
+
+#### `controller_get_assignment`
+
+Get the VM assignment for this agent from the controller API.
+
+**Returns:** `AgentAssignment` object or `None`
+
+**Example:**
+```python
+assignment = controller_get_assignment()
+if assignment:
+    print(f"Assigned to VM: {assignment.vm_name}")
+```
+
+#### `controller_get_task_queue`
+
+Get the enabled task queue for a specific VM.
+
+**Parameters:**
+- `vm_name` (string, required) - The VM to get tasks for
+
+**Returns:** `ControllerTaskQueue` object or `None`
+
+**Example:**
+```python
+queue = controller_get_task_queue(vm_name="prod-web-01")
+for task in queue.tasks:
+    print(f"Task: {task.description}")
+```
+
+### VMware Gateway Control
 
 #### `vmware_screenshot`
 
 Capture a screenshot from a VMware VM.
 
 **Parameters:**
-- `vm_name` (string, required) - The name of the VM to capture
-- `output_path` (string, optional) - Custom output path (default: `/tmp/vmware-screenshots/{vm_name}-{timestamp}.png`)
+- `vm_name` (string, required) - VM name
+- `output_path` (string, optional) - Custom output path
 
-**Returns:** PNG image file path and base64-encoded image data
+**Returns:** dict with `success`, `path`, `base64`, `size_bytes`
 
 **Example:**
-```
-vmware_screenshot(vm_name="prod-web-01")
+```python
+result = vmware_screenshot(vm_name="prod-web-01")
+if result['success']:
+    print(f"Screenshot saved to: {result['path']}")
 ```
 
 #### `vmware_send_keys`
@@ -79,315 +128,338 @@ vmware_screenshot(vm_name="prod-web-01")
 Send keyboard input to a VMware VM.
 
 **Parameters:**
-- `vm_name` (string, required) - The name of the VM to control
-- `keys` (string, required) - Keystrokes to send (supports special keys in angle brackets)
+- `vm_name` (string, required) - VM name
+- `keys` (string, required) - Keystrokes (supports special keys)
 
 **Special Key Syntax:**
-- Standard keys: Just type them (e.g., `hello`, `ls -la`)
-- Special keys in angle brackets: `<enter>`, `<tab>`, `<esc>`, `<backspace>`
-- Arrow keys: `<up>`, `<down>`, `<left>`, `<right>`
-- Function keys: `<F1>` through `<F12>`
-- Modifiers: `<ctrl_on>c<ctrl_off>`, `<alt_on><F4><alt_off>`, `<shift_on>HELLO<shift_off>`
-- Other: `<home>`, `<end>`, `<pageup>`, `<pagedown>`, `<delete>`, `<printscreen>`, `<super>`
+- Regular text: `hello world`
+- Enter: `<enter>`
+- Tab: `<tab>`
+- Escape: `<esc>`
+- Arrows: `<up>`, `<down>`, `<left>`, `<right>`
+- Function keys: `<F1>` - `<F12>`
+- Ctrl: `<ctrl_on>c<ctrl_off>` for Ctrl+C
+- Alt: `<alt_on><F4><alt_off>` for Alt+F4
+- Super: `<super>`
 
-**Returns:** Success confirmation or error message
+**Returns:** dict with `success`, `message` or `error`
 
-**Examples:**
-```
-vmware_send_keys(vm_name="prod-web-01", keys="Hello World")
-vmware_send_keys(vm_name="prod-web-01", keys="<enter>")
-vmware_send_keys(vm_name="prod-web-01", keys="<ctrl_on>c<ctrl_off>")
+**Example:**
+```python
 vmware_send_keys(vm_name="prod-web-01", keys="ls -la<enter>")
-vmware_send_keys(vm_name="prod-web-01", keys="<alt_on><F4><alt_off>")
-```
-
-#### `vmware_type_text`
-
-Type plain text to a VMware VM (wrapper around send_keys).
-
-**Parameters:**
-- `vm_name` (string, required) - The name of the VM to control
-- `text` (string, required) - Plain text to type
-
-**Returns:** Success confirmation
-
-**Example:**
-```
-vmware_type_text(vm_name="prod-web-01", text="username<tab>password<enter>")
-```
-
-#### `vmware_press_key`
-
-Press a single special key (wrapper for common keys).
-
-**Parameters:**
-- `vm_name` (string, required) - The name of the VM to control
-- `key` (string, required) - Key name without brackets (e.g., `enter`, `tab`, `F1`)
-
-**Returns:** Success confirmation
-
-**Example:**
-```
-vmware_press_key(vm_name="prod-web-01", key="enter")
-vmware_press_key(vm_name="prod-web-01", key="F1")
+vmware_send_keys(vm_name="prod-web-01", keys="<ctrl_on>c<ctrl_off>")
 ```
 
 #### `vmware_health_check`
 
 Check if vmware-gateway is accessible.
 
-**Returns:** dict with success status and gateway info
+**Returns:** dict with `success`, `gateway_url`, `status` or `error`
+
+### Vision Analysis (Ollama)
+
+#### `ollama_analyze_screenshot`
+
+Send a screenshot to Ollama vision model for analysis.
+
+**Parameters:**
+- `base64_image` (string, required) - Base64-encoded PNG
+- `prompt` (string, required) - Analysis prompt
+- `task_context` (string, optional) - Context about current task
+
+**Returns:** dict with `success`, `analysis`, `model`
 
 **Example:**
+```python
+result = ollama_analyze_screenshot(
+    base64_image=screenshot['base64'],
+    prompt="What is on this screen?",
+    task_context="Trying to login to the system"
+)
+print(result['analysis'])
 ```
-vmware_health_check()
-```
+
+#### `analyze_vm_state`
+
+High-level VM state analysis using vision model.
+
+**Parameters:**
+- `base64_image` (string, required) - Screenshot
+- `current_task` (string, optional) - Current task description
+
+**Returns:** dict with `success`, `analysis`, `detected_elements`, `suggested_actions`
+
+#### `decide_keystrokes`
+
+Decide what keystrokes to send based on vision analysis.
+
+**Parameters:**
+- `base64_image` (string, required) - Current screenshot
+- `analysis` (string, required) - Vision model analysis
+- `current_task` (string, required) - Task description
+- `suggested_keystrokes` (string, optional) - Hint from task
+- `recent_history` (list, optional) - Recent actions
+
+**Returns:** dict with `success`, `keystrokes`, `confidence`, `reasoning`
 
 ### Autonomous Operation
 
-#### `vm_autonomous_start`
+#### `agent_loop_iteration`
 
-Start autonomous operation on a VM with a list of tasks.
+Execute one complete iteration of the autonomous loop.
 
-**Parameters:**
-- `vm_name` (string, required) - The VM to control
-- `tasks` (array of strings, required) - List of tasks/objectives to accomplish
-- `loop_interval_seconds` (number, optional) - Time between observation cycles (default: 5)
-- `max_iterations` (number, optional) - Max loop iterations (default: 0 = infinite)
-
-**Returns:** Task queue ID and status
+**Returns:** dict with iteration results and step-by-step status
 
 **Example:**
-```
-vm_autonomous_start(
-  vm_name="prod-web-01",
-  tasks=[
-    "Login to the system",
-    "Open a web browser",
-    "Navigate to https://monitoring.example.com",
-    "Check system status"
-  ],
-  loop_interval_seconds=5
-)
+```python
+result = agent_loop_iteration(state)
+for step in result['steps']:
+    print(f"{step['step']}: {step['status']}")
 ```
 
-#### `vm_autonomous_status`
+#### `run_autonomous_loop`
 
-Get current status of autonomous operation.
+Run the autonomous loop continuously.
 
 **Parameters:**
-- `task_queue_id` (string, required) - The task queue ID from vm_autonomous_start
-
-**Returns:** Current task, progress, last observation, pending actions
+- `max_iterations` (int, optional) - Max iterations (0 = infinite)
 
 **Example:**
-```
-vm_autonomous_status(task_queue_id="queue-123")
-```
-
-#### `vm_autonomous_stop`
-
-Stop autonomous operation.
-
-**Parameters:**
-- `task_queue_id` (string, required) - The task queue ID to stop
-
-**Returns:** Stop confirmation and final status
-
-**Example:**
-```
-vm_autonomous_stop(task_queue_id="queue-123")
+```python
+result = run_autonomous_loop(max_iterations=0)  # Run forever
 ```
 
-#### `vm_analyze_screenshot`
+#### `get_agent_status`
 
-Analyze a screenshot to determine current VM state.
+Get current agent status and recent history.
 
-**Parameters:**
-- `vm_name` (string, required) - The VM to analyze
-- `analysis_type` (string, optional) - Type of analysis: "login_screen", "desktop", "browser", "terminal", "generic" (default: "generic")
-
-**Returns:** State description, detected elements, suggested actions
-
-**Example:**
-```
-vm_analyze_screenshot(vm_name="prod-web-01", analysis_type="login_screen")
-```
-
-#### `vm_decide_next_action`
-
-Decide what action to take based on current state and goals.
-
-**Parameters:**
-- `current_state` (string, required) - Description of current VM state
-- `current_task` (string, required) - The task being worked on
-- `task_history` (array, optional) - Previous actions taken
-
-**Returns:** Recommended action (keystrokes), confidence, reasoning
-
-**Example:**
-```
-vm_decide_next_action(
-  current_state="Login screen with username field focused",
-  current_task="Login to the system",
-  task_history=[]
-)
-```
-
-#### `vm_execute_action`
-
-Execute a decided action on the VM.
-
-**Parameters:**
-- `vm_name` (string, required) - The VM to control
-- `action` (string, required) - The action/keystrokes to send
-- `wait_seconds` (number, optional) - Time to wait after execution (default: 2)
-
-**Returns:** Execution result, new screenshot path
-
-**Example:**
-```
-vm_execute_action(
-  vm_name="prod-web-01",
-  action="admin<tab>password123<enter>",
-  wait_seconds=3
-)
-```
-
-#### `vm_autonomous_loop_iteration`
-
-Execute one iteration of the autonomous loop (observe → analyze → decide → act).
-
-**Parameters:**
-- `task_queue_id` (string, required) - The task queue to process
-
-**Returns:** Iteration results with steps taken
-
-**Example:**
-```
-vm_autonomous_loop_iteration(task_queue_id="queue-123")
-```
+**Returns:** dict with agent state, recent actions, errors
 
 ## Configuration
 
-**Hardcoded Default:**
-- **Gateway URL:** `http://vmware-gateway-service.npc.svc.cluster.local:8888`
+### Environment Variables
 
-**Environment Variables (optional overrides):**
-- `VMWARE_GATEWAY_URL` - Override gateway URL
-- `VMWARE_SCREENSHOT_DIR` - Directory to save screenshots (default: `/tmp/vmware-screenshots`)
-- `VM_TASK_QUEUE_DIR` - Task queue storage (default: `/tmp/vm-task-queues`)
-- `VM_ANALYSIS_INTERVAL` - Seconds between observations (default: 5)
-- `VM_MAX_RETRIES` - Max retries per task (default: 3)
-- `VM_ACTION_DELAY` - Seconds to wait after actions (default: 2)
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `AGENT_NAME` | `agent_0` | This agent's name (must match controller) |
+| `CONTROLLER_URL` | `http://controller.npc.svc.cluster.local:8080` | Controller API URL |
+| `VMWARE_GATEWAY_URL` | `http://vmware-gateway.npc.svc.cluster.local` | VMware gateway URL |
+| `OLLAMA_URL` | `http://ollama.npc.svc.cluster.local:11434` | Ollama API URL |
+| `OLLAMA_VISION_MODEL` | `llava:latest` | Vision model to use |
+| `POLL_INTERVAL` | `10` | Seconds between controller polls |
+| `LOOP_INTERVAL` | `3` | Seconds between loop iterations |
+| `VM_ACTION_DELAY` | `2` | Seconds to wait after sending keys |
+| `VISION_TIMEOUT` | `30` | Timeout for vision analysis (seconds) |
+
+### Local Paths
+
+| Path | Purpose |
+|------|---------|
+| `/tmp/vmware-screenshots` | Screenshot storage |
+| `/tmp/vm-task-queues` | Agent state persistence |
 
 ## Usage Patterns
 
-### Basic Remote Control
+### Start Autonomous Operation
 
+```bash
+# Set environment
+export AGENT_NAME=agent_0
+export CONTROLLER_URL=http://controller.npc.svc.cluster.local:8080
+export VMWARE_GATEWAY_URL=http://vmware-gateway.npc.svc.cluster.local
+
+# Run autonomously (infinite loop)
+python vmware_operator.py run
+
+# Run for specific iterations
+python vmware_operator.py run 100
 ```
-# Capture screen
-vmware_screenshot(vm_name="prod-web-01")
 
-# Type text
-vmware_type_text(vm_name="prod-web-01", text="Hello World")
+### Check Agent Status
 
-# Press special keys
-vmware_press_key(vm_name="prod-web-01", key="enter")
-
-# Send complex sequence
-vmware_send_keys(vm_name="prod-web-01", keys="<ctrl_on>c<ctrl_off>")
+```bash
+python vmware_operator.py status
 ```
 
-### Autonomous Login
+### Test Connectivity
 
+```bash
+python vmware_operator.py test
 ```
-# Start autonomous operation
-vm_autonomous_start(
-  vm_name="prod-web-01",
-  tasks=[
-    "Login with username 'admin' and password 'secret123'",
-    "Open terminal",
-    "Run 'systemctl status nginx'",
-    "Report the output"
+
+### Manual Control Loop
+
+```python
+from vmware_operator import *
+
+# Get assignment
+assignment = controller_get_assignment()
+if not assignment:
+    print("No assignment")
+    exit()
+
+print(f"Assigned to: {assignment.vm_name}")
+
+# Get tasks
+queue = controller_get_task_queue(assignment.vm_name)
+print(f"Tasks: {len(queue.tasks)}")
+
+# Run one iteration
+state = _load_state()
+result = agent_loop_iteration(state)
+print(json.dumps(result, indent=2))
+```
+
+## Controller API Integration
+
+### Agent Assignment
+
+The controller assigns agents to VMs via `/api/v1/agent-assignments`:
+
+```json
+{
+  "id": "uuid",
+  "agent_name": "agent_0",
+  "vm_name": "prod-web-01",
+  "enabled": true
+}
+```
+
+### Task Queues
+
+Tasks are defined in `/api/v1/task-queues`:
+
+```json
+{
+  "id": "uuid",
+  "name": "Login and check nginx",
+  "vm_name": "prod-web-01",
+  "enabled": true,
+  "tasks": [
+    {
+      "description": "Login to the system",
+      "keystrokes": "admin<tab>password<enter>",
+      "delay_ms": 2000
+    },
+    {
+      "description": "Check nginx status",
+      "keystrokes": "systemctl status nginx<enter>",
+      "delay_ms": 3000
+    }
   ]
-)
-
-# Check progress
-vm_autonomous_status(task_queue_id="queue-abc123")
-
-# Stop when done
-vm_autonomous_stop(task_queue_id="queue-abc123")
+}
 ```
 
-### Continuous Monitoring
+The agent:
+1. Polls controller every `POLL_INTERVAL` seconds
+2. Finds its assignment by `agent_name`
+3. Gets the enabled task queue for its assigned VM
+4. Cycles through tasks continuously
+5. Uses vision to adapt if suggested keystrokes don't work
 
+## Vision Model Integration
+
+### Supported Models
+
+Any Ollama vision model works:
+
+- `llava:latest` - General purpose, good accuracy
+- `bakllava` - Faster, smaller
+- `moondream` - Very fast, compact
+- `llava-llama3` - Better reasoning
+
+### Analysis Prompts
+
+The skill uses two-stage analysis:
+
+1. **State Analysis**: "What type of screen is this? What elements are visible?"
+2. **Decision**: "What keystrokes should I send to progress toward this task?"
+
+### Handling Vision Failures
+
+If vision analysis fails:
+- Falls back to suggested keystrokes from task
+- Logs error and retries next iteration
+- After 3 failures, marks task as failed and moves on
+
+## State Persistence
+
+Agent state is saved to `/tmp/vm-task-queues/{agent_name}-state.json`:
+
+```json
+{
+  "agent_name": "agent_0",
+  "assigned_vm": "prod-web-01",
+  "current_queue_id": "uuid",
+  "current_task_index": 2,
+  "status": "working",
+  "loop_iteration": 147,
+  "last_action": "systemctl status nginx<enter>",
+  "action_history": [...]
+}
 ```
-# Monitor a dashboard every 30 seconds
-vm_autonomous_start(
-  vm_name="monitor-vm-01",
-  tasks=[
-    "Navigate to https://grafana.example.com",
-    "Check for any red alerts",
-    "If alerts found, note them and continue monitoring"
-  ],
-  loop_interval_seconds=30,
-  max_iterations=0
-)
-```
 
-### Manual Decision Loop
-
-```
-# Capture and analyze
-screenshot = vmware_screenshot(vm_name="prod-web-01")
-analysis = vm_analyze_screenshot(vm_name="prod-web-01", analysis_type="login_screen")
-
-# Decide action
-decision = vm_decide_next_action(
-  current_state=analysis['state_description'],
-  current_task="Login to the system"
-)
-
-# Execute
-vm_execute_action(
-  vm_name="prod-web-01",
-  action=decision['action'],
-  wait_seconds=3
-)
-```
-
-## State Detection
-
-The agent can detect these common states:
-
-| State | Detection Clues | Typical Actions |
-|-------|----------------|-----------------|
-| Login Screen | Username/password fields, login button | Type credentials, press enter |
-| Desktop | Taskbar, start menu, desktop icons | Open applications |
-| Terminal | Command prompt, cursor, text output | Type commands |
-| Browser | URL bar, tabs, webpage content | Navigate, click, scroll |
-| Application | Window chrome, menus, content area | Interact with UI |
-| Error/Dialog | Alert boxes, error messages | Acknowledge, dismiss |
+This allows:
+- Surviving restarts
+- Resuming where left off
+- Debugging via action history
 
 ## Error Handling
 
-- **Task fails 3 times** - Mark as failed, move to next task
-- **VM unresponsive** - Retry connection, alert after 5 failures
-- **Unexpected state** - Log state, attempt recovery actions
-- **Screenshot fails** - Retry up to 3 times, then pause
-- **Gateway unreachable** - Run `vmware_health_check()` and alert user
+| Error | Behavior |
+|-------|----------|
+| Controller unreachable | Retry next poll, status="error" |
+| No assignment | Status="idle", wait for assignment |
+| VMware gateway down | Status="error", log error |
+| Vision timeout | Fall back to suggested keystrokes |
+| Keys fail to send | Retry up to 3 times, then skip task |
+| Stuck in loop | Human intervention needed |
+
+## Debugging
+
+### View Recent Actions
+
+```bash
+python vmware_operator.py status | jq .recent_actions
+```
+
+### View Last Screenshot
+
+```bash
+ls -lt /tmp/vmware-screenshots | head
+```
+
+### Check Agent State
+
+```bash
+cat /tmp/vm-task-queues/agent_0-state.json | jq
+```
+
+### Test Individual Components
+
+```python
+# Test screenshot
+vmware_screenshot("prod-web-01")
+
+# Test keys
+vmware_send_keys("prod-web-01", "<enter>")
+
+# Test vision
+result = ollama_analyze_screenshot(base64_img, "What do you see?")
+print(result['analysis'])
+```
 
 ## Security Notes
 
-- VM names are validated against a whitelist on the gateway
+- VM names validated by gateway whitelist
 - Gateway should run behind TLS in production
-- Use dedicated vSphere service account with minimal permissions
-- Screenshots may contain sensitive data - handle securely
-- Task queues may contain credentials - store securely
-- Action history logs all keystrokes - review before sharing
+- Screenshots may contain sensitive data
+- Action history logs all keystrokes
+- Agent credentials should be scoped minimally
 
 ## Dependencies
 
-- `requests` - HTTP requests to vmware-gateway
-- `Pillow` - Image handling (optional, for advanced analysis)
+- `requests` - HTTP client
+- Ollama with vision model installed
+- Access to controller API
+- Access to vmware-gateway API
