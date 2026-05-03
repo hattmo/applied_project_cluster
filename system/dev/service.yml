@@ -29,6 +29,18 @@ spec:
   - port: 443
     targetPort: 8443
     protocol: TCP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vmware-lb
+  namespace: npc-dev
+spec:
+  type: LoadBalancer
+  selector:
+    app: vmware-gateway
+  ports:
   - port: 80
-    targetPort: 8080 
+    targetPort: 8080
     protocol: TCP
+
