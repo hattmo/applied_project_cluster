@@ -76,6 +76,7 @@ struct AppState {
     static_state: StaticState,
     mutable_state: MutableState,
     http_client: HttpClient,
+    #[allow(dead_code)]
     matrix_client: MatrixClient,
     kube_client: KubeClient,
     room: Room,
