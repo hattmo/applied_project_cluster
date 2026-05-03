@@ -13,14 +13,8 @@ Working on VMware vSphere infrastructure and autonomous VM operation. Prefers pr
 ## Infrastructure
 
 ### VMware Environment
-- **Gateway:** `http://vmware-gateway-service.npc.svc.cluster.local:8888`
-- **Namespace:** `npc`
+- **Gateway:** `http://vmware-gateway:80`
 - **Access:** Via vmware-gateway API (keyboard input + screenshots)
-
-### Kubernetes Cluster
-- **OpenClaw:** Running in `npc` namespace
-- **vmware-gateway:** vSphere proxy service
-- **Ollama:** Local LLM for inference
 
 ## Preferences
 
